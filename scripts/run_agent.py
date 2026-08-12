@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 
 from webpilot.agents.actor import BrowserActor
 from webpilot.agents.loop import SingleBrowserAgent
@@ -24,7 +25,11 @@ def parse_args() -> argparse.Namespace:
 
 async def main() -> int:
     args = parse_args()
-    llm = OpenAICompatibleLLM.from_env()
+    try:
+        llm = OpenAICompatibleLLM.from_env()
+    except RuntimeError as exc:
+        print(f"LLM configuration error: {exc}", file=sys.stderr)
+        return 2
     runtime = BrowserRuntime()
     observation_engine = ObservationEngine()
     tools = BrowserToolExecutor(runtime, observation_engine)

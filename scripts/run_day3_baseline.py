@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from statistics import mean
@@ -134,7 +135,11 @@ def result_to_record(
 async def main() -> int:
     args = parse_args()
     tasks = load_tasks(args.tasks)
-    llm = OpenAICompatibleLLM.from_env()
+    try:
+        llm = OpenAICompatibleLLM.from_env()
+    except RuntimeError as exc:
+        print(f"LLM configuration error: {exc}", file=sys.stderr)
+        return 2
     records = [
         await run_task(
             llm=llm,
