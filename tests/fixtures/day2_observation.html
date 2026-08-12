@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>WebPilot Observation Test</title>
+</head>
+
+<body>
+
+<h1>Product Search</h1>
+
+<p>
+    Search and filter products.
+</p>
+
+<label for="search-input">
+    Search Products
+</label>
+
+<input
+    id="search-input"
+    type="text"
+    placeholder="Enter product name"
+/>
+
+<button id="search-button">
+    Search
+</button>
+
+<label for="category-select">
+    Category
+</label>
+
+<select id="category-select">
+    <option>All</option>
+    <option>Phones</option>
+    <option>Laptops</option>
+</select>
+
+<a href="#products">
+    View Products
+</a>
+
+<label>
+    <input
+        id="stock-checkbox"
+        type="checkbox"
+    />
+    In Stock Only
+</label>
+
+<button
+    id="hidden-button"
+    style="display: none;"
+>
+    Hidden Button
+</button>
+
+<div id="products">
+    No search yet.
+</div>
+
+<script>
+document
+    .getElementById("search-button")
+    .addEventListener("click", () => {
+
+        const query =
+            document
+            .getElementById(
+                "search-input"
+            )
+            .value;
+
+        document
+            .getElementById(
+                "products"
+            )
+            .textContent =
+                "Results for: " + query;
+    });
+</script>
+
+</body>
+
+</html>

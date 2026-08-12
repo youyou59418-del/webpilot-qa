@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Virtual environment
+.venv/
+
+# Environment
+.env
+.env.*
+
+# IDE
+.vscode/
+.idea/
+.ipynb_checkpoints/
+
+# Python packaging
+*.egg-info/
+build/
+dist/
+
+# Runtime artifacts
+artifacts/*
+!artifacts/.gitkeep
+
+# Model / cache
+models/
+cache/
+
+# HuggingFace
+huggingface/
+
+# Frontend
+node_modules/
+.next/
+
+# Logs
+*.log
+
+# Playwright test output
+playwright-report/
+test-results/
