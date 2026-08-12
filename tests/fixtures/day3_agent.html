@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebPilot Day 3 Agent Fixture</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 760px;
+            margin: 40px auto;
+        }
+
+        input,
+        button {
+            font-size: 18px;
+            padding: 10px;
+            margin-right: 8px;
+        }
+
+        #result {
+            margin-top: 24px;
+            font-size: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>Product Search</h1>
+
+<label for="search-input">
+    Search Products
+</label>
+
+<input
+    id="search-input"
+    type="text"
+    aria-label="Search Products"
+    placeholder="Enter product name"
+/>
+
+<button
+    id="search-button"
+    type="button"
+    onclick="runSearch()"
+>
+    Search
+</button>
+
+<div id="result">
+    No search yet
+</div>
+
+<script>
+function runSearch() {
+    const value =
+        document.getElementById("search-input").value;
+
+    document.getElementById("result").textContent =
+        "Results for: " + value;
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,22 @@
+[
+  {"id": "search_01", "goal": "Search for laptop and stop only when the page says Results for: laptop.", "expected_text": "Results for: laptop"},
+  {"id": "search_02", "goal": "Search for keyboard and stop only when the page says Results for: keyboard.", "expected_text": "Results for: keyboard"},
+  {"id": "search_03", "goal": "Search for mouse and stop only when the page says Results for: mouse.", "expected_text": "Results for: mouse"},
+  {"id": "search_04", "goal": "Search for monitor and stop only when the page says Results for: monitor.", "expected_text": "Results for: monitor"},
+  {"id": "search_05", "goal": "Search for headset and stop only when the page says Results for: headset.", "expected_text": "Results for: headset"},
+  {"id": "search_06", "goal": "Search for webcam and stop only when the page says Results for: webcam.", "expected_text": "Results for: webcam"},
+  {"id": "search_07", "goal": "Search for tablet and stop only when the page says Results for: tablet.", "expected_text": "Results for: tablet"},
+  {"id": "search_08", "goal": "Search for phone and stop only when the page says Results for: phone.", "expected_text": "Results for: phone"},
+  {"id": "search_09", "goal": "Search for printer and stop only when the page says Results for: printer.", "expected_text": "Results for: printer"},
+  {"id": "search_10", "goal": "Search for speaker and stop only when the page says Results for: speaker.", "expected_text": "Results for: speaker"},
+  {"id": "search_11", "goal": "Search for camera and stop only when the page says Results for: camera.", "expected_text": "Results for: camera"},
+  {"id": "search_12", "goal": "Search for charger and stop only when the page says Results for: charger.", "expected_text": "Results for: charger"},
+  {"id": "search_13", "goal": "Search for router and stop only when the page says Results for: router.", "expected_text": "Results for: router"},
+  {"id": "search_14", "goal": "Search for cable and stop only when the page says Results for: cable.", "expected_text": "Results for: cable"},
+  {"id": "search_15", "goal": "Search for desk and stop only when the page says Results for: desk.", "expected_text": "Results for: desk"},
+  {"id": "search_16", "goal": "Search for chair and stop only when the page says Results for: chair.", "expected_text": "Results for: chair"},
+  {"id": "search_17", "goal": "Search for notebook and stop only when the page says Results for: notebook.", "expected_text": "Results for: notebook"},
+  {"id": "search_18", "goal": "Search for backpack and stop only when the page says Results for: backpack.", "expected_text": "Results for: backpack"},
+  {"id": "search_19", "goal": "Search for coffee and stop only when the page says Results for: coffee.", "expected_text": "Results for: coffee"},
+  {"id": "search_20", "goal": "Search for lamp and stop only when the page says Results for: lamp.", "expected_text": "Results for: lamp"}
+]

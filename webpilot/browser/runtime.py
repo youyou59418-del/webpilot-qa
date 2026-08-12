@@ -3,6 +3,7 @@ from pathlib import Path
 from playwright.async_api import (
     Browser,
     BrowserContext,
+    Locator,
     Page,
     Playwright,
     async_playwright,
@@ -108,22 +109,32 @@ class BrowserRuntime:
 
     async def click(
         self,
-        locator: str,
+        locator: str | Locator,
         *,
         timeout_ms: int = 10_000,
     ) -> None:
-        await self.page.locator(locator).click(
+        target = (
+            self.page.locator(locator)
+            if isinstance(locator, str)
+            else locator
+        )
+        await target.click(
             timeout=timeout_ms
         )
 
     async def fill(
         self,
-        locator: str,
+        locator: str | Locator,
         value: str,
         *,
         timeout_ms: int = 10_000,
     ) -> None:
-        await self.page.locator(locator).fill(
+        target = (
+            self.page.locator(locator)
+            if isinstance(locator, str)
+            else locator
+        )
+        await target.fill(
             value,
             timeout=timeout_ms,
         )

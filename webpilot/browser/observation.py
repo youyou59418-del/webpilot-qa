@@ -87,6 +87,10 @@ class ObservationEngine:
             str,
             Locator,
         ] = {}
+        self._ref_elements: dict[
+            str,
+            InteractiveElement,
+        ] = {}
 
     async def observe(
         self,
@@ -97,6 +101,8 @@ class ObservationEngine:
 
         # 每次重新观察页面，都重新生成 Ref。
         self._ref_locators = {}
+
+        self._ref_elements = {}
 
         candidates = page.locator(
             self.INTERACTIVE_SELECTOR
@@ -377,8 +383,7 @@ class ObservationEngine:
                 ref
             ] = locator
 
-            elements.append(
-                InteractiveElement(
+            element = InteractiveElement(
                     ref=ref,
                     tag=data["tag"],
                     role=data["role"],
@@ -397,6 +402,9 @@ class ObservationEngine:
                     ],
                     visible=True,
                 )
+            self._ref_elements[ref] = element
+            elements.append(
+                element
             )
 
 
@@ -477,3 +485,13 @@ class ObservationEngine:
             )
 
         return locator
+
+    def element_for(
+        self,
+        ref: str,
+    ) -> InteractiveElement:
+        """Return metadata for a ref in the current observation lifecycle."""
+        element = self._ref_elements.get(ref)
+        if element is None:
+            raise KeyError(f"Unknown element ref: {ref}")
+        return element
