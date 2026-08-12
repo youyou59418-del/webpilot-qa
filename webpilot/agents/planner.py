@@ -206,6 +206,7 @@ class BrowserPlanner:
         *,
         goal: str,
         target_url: str,
+        recovery_context: str | None = None,
     ) -> TestPlan:
         system_prompt = """
 You are the Planner of WebPilot-QA.
@@ -234,12 +235,23 @@ Rules:
 The plan must be verifiable from the real browser state.
 """.strip()
 
+        recovery_note = ""
+        if recovery_context:
+            recovery_note = f"""
+RECOVERY CONTEXT:
+{recovery_context}
+
+Create a fresh replacement plan. Do not repeat an invalid assumption.
+""".strip()
+
         user_prompt = f"""
 TARGET URL:
 {target_url}
 
 USER TASK:
 {goal}
+
+{recovery_note}
 
 Create the smallest useful sequence of verifiable milestones.
 """.strip()

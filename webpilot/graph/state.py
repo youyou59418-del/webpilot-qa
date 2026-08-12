@@ -12,6 +12,10 @@ from pydantic import (
 from webpilot.agents.planner import (
     TestPlan,
 )
+from webpilot.recovery.models import (
+    FailureEvent,
+    RecoveryDecision,
+)
 from webpilot.verifier.rules import (
     VerificationResult,
 )
@@ -46,6 +50,10 @@ class ActionRecord(BaseModel):
     tool_name: str
     arguments: dict[str, Any]
     result: dict[str, Any]
+    plan_attempt: int = Field(
+        default=1,
+        ge=1,
+    )
 
 
 class StepVerification(BaseModel):
@@ -55,6 +63,40 @@ class StepVerification(BaseModel):
 
     plan_step_id: str
     result: VerificationResult
+    plan_attempt: int = Field(
+        default=1,
+        ge=1,
+    )
+
+
+class PlanAttempt(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+
+    attempt: int = Field(
+        ge=1,
+    )
+    trigger: Literal["initial", "replan"]
+    plan: TestPlan
+    failure: FailureEvent | None = None
+
+
+class RecoveryRecord(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+
+    plan_attempt: int = Field(
+        ge=1,
+    )
+    plan_step_id: str
+    failure: FailureEvent
+    decision: RecoveryDecision
+    retry_count_after: int = Field(
+        ge=0,
+    )
+    outcome: str
 
 
 class Day4RunState(BaseModel):
@@ -66,6 +108,15 @@ class Day4RunState(BaseModel):
     task: str
     target_url: str
     plan: TestPlan
+
+    plan_attempt: int = Field(
+        default=1,
+        ge=1,
+    )
+
+    plan_history: list[PlanAttempt] = Field(
+        default_factory=list,
+    )
 
     current_step_index: int = Field(
         default=0,
@@ -87,6 +138,10 @@ class Day4RunState(BaseModel):
     ) = None
 
     step_verifications: list[StepVerification] = Field(
+        default_factory=list,
+    )
+
+    recovery_history: list[RecoveryRecord] = Field(
         default_factory=list,
     )
 
