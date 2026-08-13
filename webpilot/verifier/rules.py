@@ -93,6 +93,18 @@ class RuleVerifier:
                     )
                 )
 
+            elif criterion.rule == "element_value_equals":
+                item = self._verify_element_value_equals(
+                    observation=observation,
+                    criterion=criterion,
+                )
+
+            elif criterion.rule == "element_checked_equals":
+                item = self._verify_element_checked_equals(
+                    observation=observation,
+                    criterion=criterion,
+                )
+
             else:
                 raise RuntimeError(
                     "Unsupported verification rule: "
@@ -245,4 +257,58 @@ class RuleVerifier:
                 "Matched element using exact semantic target "
                 f"({target})"
             ),
+        )
+
+    @staticmethod
+    def _matching_elements(
+        *,
+        observation: Any,
+        criterion: SuccessCriterion,
+    ) -> list[Any]:
+        return [
+            element
+            for element in observation.elements
+            if (
+                (not criterion.element_role or element.role == criterion.element_role)
+                and (not criterion.element_name or element.name == criterion.element_name)
+            )
+        ]
+
+    def _verify_element_value_equals(
+        self,
+        *,
+        observation: Any,
+        criterion: SuccessCriterion,
+    ) -> VerificationEvidence:
+        candidates = self._matching_elements(
+            observation=observation,
+            criterion=criterion,
+        )
+        actual_values = [element.value or "" for element in candidates]
+        return VerificationEvidence(
+            rule=criterion.rule,
+            expected=criterion.expected,
+            actual=repr(actual_values) if candidates else "<element-not-found>",
+            passed=criterion.expected in actual_values,
+            details="Matched the current control value using its semantic target.",
+        )
+
+    def _verify_element_checked_equals(
+        self,
+        *,
+        observation: Any,
+        criterion: SuccessCriterion,
+    ) -> VerificationEvidence:
+        candidates = self._matching_elements(
+            observation=observation,
+            criterion=criterion,
+        )
+        expected = criterion.expected == "true"
+        actual_values = [element.checked for element in candidates]
+        return VerificationEvidence(
+            rule=criterion.rule,
+            expected=criterion.expected,
+            actual=repr(actual_values) if candidates else "<element-not-found>",
+            passed=expected in actual_values,
+            details="Matched the current checked state using its semantic target.",
         )

@@ -148,6 +148,23 @@ class BrowserRuntime:
             timeout=timeout_ms,
         )
 
+    async def select_option(
+        self,
+        locator: str | Locator,
+        value: str,
+        *,
+        timeout_ms: int = 10_000,
+    ) -> None:
+        target = (
+            self.page.locator(locator)
+            if isinstance(locator, str)
+            else locator
+        )
+        await target.select_option(
+            label=value,
+            timeout=timeout_ms,
+        )
+
     async def get_text(
         self,
         locator: str,

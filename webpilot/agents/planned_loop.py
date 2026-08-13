@@ -296,11 +296,12 @@ class PlannedBrowserAgent:
         for index in range(start_index, len(state.plan.steps)):
             step = state.plan.steps[index]
             state.current_step_index = index
+            requires_action = self.bootstrap_target and self._step_requires_action(step)
             # A planner milestone may already be true because the target page
             # has a useful default state or a previous step fulfilled it as a
             # side effect.  Verify first so a smaller model is not invited to
             # repeat a successful click solely to produce a DONE message.
-            if self.enable_verifier:
+            if self.enable_verifier and not requires_action:
                 current_observation = await self.observation_engine.observe(
                     self.agent.tools.runtime
                 )
@@ -330,6 +331,7 @@ class PlannedBrowserAgent:
                     if self.enable_verifier
                     else None
                 ),
+                require_action=requires_action,
             )
             step_runs.append(execution)
             state.observation = summarize_observation(
@@ -403,6 +405,20 @@ class PlannedBrowserAgent:
                 )
 
         return None
+
+    @staticmethod
+    def _step_requires_action(step: PlanStep) -> bool:
+        """Do not let static page text pre-satisfy an operational milestone."""
+        goal = step.goal.lower()
+        return any(
+            marker in goal
+            for marker in (
+                "open", "navigate", "switch", "search", "filter", "select",
+                "enable", "disable", "sort", "add", "remove", "fill", "save",
+                "log in", "login", "show", "trigger", "refresh", "retry", "move",
+                "go to", "recover",
+            )
+        )
 
     async def _apply_recovery(
         self,

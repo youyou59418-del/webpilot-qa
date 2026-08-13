@@ -90,6 +90,25 @@ BROWSER_TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "select_option",
+            "description": (
+                "Select an exact visible option label from a visible enabled "
+                "combobox using a ref from the current observation."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "ref": {"type": "string"},
+                    "value": {"type": "string"},
+                },
+                "required": ["ref", "value"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "get_page_state",
             "description": "Read a fresh structured browser observation.",
             "parameters": {
@@ -106,6 +125,7 @@ ALLOWED_BROWSER_TOOLS = frozenset(
         "open_url",
         "click",
         "fill",
+        "select_option",
         "get_page_state",
     }
 )
@@ -179,6 +199,8 @@ class BrowserToolExecutor:
             return await self._click(arguments)
         if tool_name == "fill":
             return await self._fill(arguments)
+        if tool_name == "select_option":
+            return await self._select_option(arguments)
         if tool_name == "get_page_state":
             return await self._get_page_state(arguments)
 
@@ -247,6 +269,23 @@ class BrowserToolExecutor:
             "tool": "fill",
             "ref": ref,
         }
+
+    async def _select_option(
+        self,
+        arguments: dict[str, Any],
+    ) -> dict[str, Any]:
+        self._require_exact_keys(arguments, required={"ref", "value"})
+        ref = self._required_string(arguments, "ref")
+        value = self._required_string(arguments, "value")
+        element = self._actionable_element(ref)
+        if element.role != "combobox":
+            raise ToolInputError(
+                f"Element ref {ref} is not a combobox: role={element.role!r}"
+            )
+        await self.runtime.select_option(
+            self.observation_engine.locator_for(ref), value
+        )
+        return {"ok": True, "tool": "select_option", "ref": ref, "value": value}
 
     async def _get_page_state(
         self,

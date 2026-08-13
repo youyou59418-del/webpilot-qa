@@ -16,6 +16,8 @@ class InteractiveElement(BaseModel):
     text: str | None = None
     placeholder: str | None = None
     element_type: str | None = None
+    value: str | None = None
+    checked: bool | None = None
 
     enabled: bool = True
     visible: bool = True
@@ -291,10 +293,16 @@ class ObservationEngine:
                     );
 
                     const value = clean(
-                        el.getAttribute(
-                            "value"
-                        )
+                        "value" in el
+                            ? el.value
+                            : el.getAttribute("value")
                     );
+
+                    const checked =
+                        "checked" in el &&
+                        typeof el.checked === "boolean"
+                            ? Boolean(el.checked)
+                            : null;
 
                     const tabindex =
                         el.getAttribute(
@@ -361,6 +369,8 @@ class ObservationEngine:
                         placeholder:
                             placeholder,
                         type: type,
+                        value: value,
+                        checked: checked,
                         interactive: interactive,
                         disabled:
                             Boolean(
@@ -397,6 +407,8 @@ class ObservationEngine:
                     element_type=(
                         data["type"]
                     ),
+                    value=data["value"],
+                    checked=data["checked"],
                     enabled=not data[
                         "disabled"
                     ],

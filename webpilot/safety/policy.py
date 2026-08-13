@@ -66,6 +66,9 @@ class RiskPolicy:
                 )
             return RiskLevel.L1, "Ordinary form entry."
 
+        if tool_name == "select_option":
+            return RiskLevel.L1, "Ordinary form selection."
+
         if tool_name == "click":
             if any(term in target_text for term in _HIGH_RISK_TERMS):
                 return (

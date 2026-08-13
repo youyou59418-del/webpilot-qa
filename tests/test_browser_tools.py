@@ -129,6 +129,63 @@ async def test_get_page_state_rejects_arguments() -> None:
         await runtime.close()
 
 
+@pytest.mark.asyncio
+async def test_tools_select_option_and_observe_current_control_state() -> None:
+    runtime = BrowserRuntime()
+    engine = ObservationEngine()
+    tools = BrowserToolExecutor(runtime, engine)
+
+    await runtime.start()
+    try:
+        await runtime.page.set_content(
+            "<label>Category<select aria-label='Category'>"
+            "<option>All</option><option>Electronics</option>"
+            "</select></label>"
+            "<label><input type='checkbox' aria-label='In stock only' />In stock</label>"
+        )
+        observation = await engine.observe(runtime)
+        refs = {element.name: element.ref for element in observation.elements}
+
+        await tools.execute(
+            "select_option",
+            {"ref": refs["Category"], "value": "Electronics"},
+        )
+        await tools.execute("click", {"ref": refs["In stock only"]})
+
+        after = await engine.observe(runtime)
+        elements = {element.name: element for element in after.elements}
+        assert elements["Category"].value == "Electronics"
+        assert elements["In stock only"].checked is True
+    finally:
+        await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_tools_reject_selecting_an_option_from_a_non_combobox(
+    fixture_url: str,
+) -> None:
+    runtime = BrowserRuntime()
+    engine = ObservationEngine()
+    tools = BrowserToolExecutor(runtime, engine)
+
+    await runtime.start()
+    try:
+        await tools.execute("open_url", {"url": fixture_url})
+        observation = await engine.observe(runtime)
+        button_ref = next(
+            element.ref
+            for element in observation.elements
+            if element.role == "button"
+        )
+        with pytest.raises(ToolInputError, match="not a combobox"):
+            await tools.execute(
+                "select_option",
+                {"ref": button_ref, "value": "Anything"},
+            )
+    finally:
+        await runtime.close()
+
+
 def test_browser_tool_schemas_are_strict() -> None:
     for schema in BROWSER_TOOL_SCHEMAS:
         parameters = schema["function"]["parameters"]

@@ -129,6 +129,7 @@ class SingleBrowserAgent:
         goal: str,
         target_url: str,
         completion_check: Callable[[BrowserObservation], bool] | None = None,
+        require_action: bool = False,
     ) -> AgentRunResult:
         if not goal.strip():
             raise ValueError("goal must not be empty.")
@@ -139,7 +140,11 @@ class SingleBrowserAgent:
         action_history: list[ActionRecord] = []
         observation = await self.observation_engine.observe(self.tools.runtime)
 
-        if completion_check is not None and completion_check(observation):
+        if (
+            not require_action
+            and completion_check is not None
+            and completion_check(observation)
+        ):
             return self._result(
                 status="completed",
                 goal=goal,
@@ -162,15 +167,27 @@ class SingleBrowserAgent:
                     error="Run was cancelled before the next action.",
                 )
             try:
-                decision = await self.actor.decide(
-                    goal=goal,
-                    target_url=target_url,
-                    observation=observation,
-                    history=[
+                decision_kwargs = {
+                    "goal": goal,
+                    "target_url": target_url,
+                    "observation": observation,
+                    "history": [
                         record.history_item()
                         for record in action_history
                     ],
-                )
+                }
+                if require_action and not action_history:
+                    try:
+                        decision = await self.actor.decide(
+                            **decision_kwargs,
+                            require_action=True,
+                        )
+                    except TypeError as exc:
+                        if "require_action" not in str(exc):
+                            raise
+                        decision = await self.actor.decide(**decision_kwargs)
+                else:
+                    decision = await self.actor.decide(**decision_kwargs)
             except Exception as exc:
                 return self._result(
                     status="actor_error",
@@ -183,6 +200,16 @@ class SingleBrowserAgent:
                 )
 
             if decision.kind == "done":
+                if require_action and not action_history:
+                    return self._result(
+                        status="actor_error",
+                        goal=goal,
+                        target_url=target_url,
+                        observation=observation,
+                        action_history=action_history,
+                        started_at=started_at,
+                        error="Actor attempted DONE before the required browser action.",
+                    )
                 return self._result(
                     status="completed",
                     goal=goal,
@@ -385,7 +412,7 @@ class SingleBrowserAgent:
         tool_name: str,
         arguments: dict[str, Any],
     ) -> ElementSignature | None:
-        if self.self_healing_locator is None or tool_name not in {"click", "fill"}:
+        if self.self_healing_locator is None or tool_name not in {"click", "fill", "select_option"}:
             return None
         ref = arguments.get("ref")
         if not isinstance(ref, str):

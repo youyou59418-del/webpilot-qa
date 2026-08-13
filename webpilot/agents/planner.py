@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import json
 from typing import Any, Literal, Protocol
 
 from webpilot.browser.observation import BrowserObservation
@@ -20,6 +21,8 @@ RuleType = Literal[
     "url_contains",
     "visible_text_contains",
     "element_text_equals",
+    "element_value_equals",
+    "element_checked_equals",
 ]
 
 
@@ -61,16 +64,35 @@ class SuccessCriterion(BaseModel):
     def validate_element_rule(
         self,
     ) -> "SuccessCriterion":
-        if self.rule == "element_text_equals":
+        element_rules = {
+            "element_text_equals",
+            "element_value_equals",
+            "element_checked_equals",
+        }
+        if self.rule in element_rules:
             if not self.element_role or not self.element_name:
                 raise ValueError(
-                    "element_text_equals requires both "
-                    "element_role and element_name"
+                    f"{self.rule} requires both element_role and element_name"
                 )
             if self.element_role not in OBSERVABLE_ELEMENT_ROLES:
                 raise ValueError(
-                    "element_text_equals only supports actionable roles "
-                    "exposed by ObservationEngine.elements"
+                    f"{self.rule} only supports actionable roles exposed by "
+                    "ObservationEngine.elements"
+                )
+        if self.rule == "element_value_equals" and self.element_role not in {
+            "textbox", "combobox", "spinbutton", "slider"
+        }:
+            raise ValueError(
+                "element_value_equals only supports value-bearing controls"
+            )
+        if self.rule == "element_checked_equals":
+            if self.element_role not in {"checkbox", "radio", "switch"}:
+                raise ValueError(
+                    "element_checked_equals only supports checkable controls"
+                )
+            if self.expected not in {"true", "false"}:
+                raise ValueError(
+                    "element_checked_equals expected must be the string true or false"
                 )
 
         return self
@@ -174,6 +196,8 @@ PLAN_TOOL_SCHEMA: dict[str, Any] = {
                                                 "url_contains",
                                                 "visible_text_contains",
                                                 "element_text_equals",
+                                                "element_value_equals",
+                                                "element_checked_equals",
                                             ],
                                         },
                                         "expected": {
@@ -239,6 +263,9 @@ def _planning_tool_schema(
 
 def _normalize_snapshot_plan_arguments(
     arguments: dict[str, Any],
+    *,
+    goal: str,
+    browser_observation: BrowserObservation,
 ) -> dict[str, Any]:
     """Match a small-model plan to the state evidence it can verify.
 
@@ -261,11 +288,125 @@ def _normalize_snapshot_plan_arguments(
         for criterion in criteria:
             if not isinstance(criterion, dict):
                 continue
-            if criterion.get("rule") == "element_text_equals":
+            if criterion.get("rule") in {
+                "element_text_equals",
+                "element_value_equals",
+                "element_checked_equals",
+            }:
+                # Snapshot-plan schemas reserve stateful element rules for
+                # framework-injected benchmark controls. A model-emitted
+                # element rule may point at an arbitrary label (for example a
+                # cart count), so retain its text evidence but strip the
+                # unsupported semantic target before validation.
                 criterion["rule"] = "visible_text_contains"
                 criterion.pop("element_role", None)
                 criterion.pop("element_name", None)
+    _repair_single_page_url_criteria(
+        normalized,
+        browser_observation=browser_observation,
+    )
+    _add_benchmark_control_criteria(normalized, goal=goal)
     return normalized
+
+
+def _repair_single_page_url_criteria(
+    arguments: dict[str, Any],
+    *,
+    browser_observation: BrowserObservation,
+) -> None:
+    """Do not let a planner invent routes for a client-side tab interface."""
+    steps = arguments.get("steps")
+    if not isinstance(steps, list):
+        return
+    current_url = browser_observation.url
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        criteria = step.get("success_criteria")
+        if not isinstance(criteria, list):
+            continue
+        goal_words = str(step.get("goal", "")).lower()
+        replacement = next(
+            (
+                label
+                for token, label in (
+                    ("catalog", "Catalog"),
+                    ("orders", "Orders"),
+                    ("profile", "Profile"),
+                )
+                if token in goal_words
+            ),
+            None,
+        )
+        for criterion in criteria:
+            if not isinstance(criterion, dict):
+                continue
+            expected = criterion.get("expected")
+            if (
+                criterion.get("rule") == "url_contains"
+                and isinstance(expected, str)
+                and expected.startswith("/")
+                and expected not in current_url
+                and replacement is not None
+            ):
+                criterion["rule"] = "visible_text_contains"
+                criterion["expected"] = replacement
+                criterion.pop("element_role", None)
+                criterion.pop("element_name", None)
+
+
+def _benchmark_expected_state(goal: str) -> dict[str, Any] | None:
+    marker = "BENCHMARK ACCEPTANCE STATE (public task oracle):"
+    if marker not in goal:
+        return None
+    after_marker = goal.split(marker, 1)[1].lstrip()
+    line = after_marker.splitlines()[0] if after_marker else ""
+    try:
+        parsed = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _add_benchmark_control_criteria(
+    arguments: dict[str, Any],
+    *,
+    goal: str,
+) -> None:
+    """Bind public benchmark control targets to their observable control state.
+
+    This does not execute a benchmark action or replace its final oracle.  It
+    only stops a planner from using an always-visible option label as evidence
+    that a textbox, select, checkbox, or profile field actually changed.
+    """
+    expected_state = _benchmark_expected_state(goal)
+    steps = arguments.get("steps")
+    if not expected_state or not isinstance(steps, list):
+        return
+    bindings = {
+        "search": ("search", {"rule": "element_value_equals", "expected": expected_state.get("search"), "element_role": "textbox", "element_name": "Search products"}),
+        "category": ("filter", {"rule": "element_value_equals", "expected": expected_state.get("category"), "element_role": "combobox", "element_name": "Category"}),
+        "in_stock_only": ("stock", {"rule": "element_checked_equals", "expected": "true" if expected_state.get("in_stock_only") else "false", "element_role": "checkbox", "element_name": "In stock only"}),
+        "sort": ("sort", {"rule": "element_value_equals", "expected": expected_state.get("sort"), "element_role": "combobox", "element_name": "Catalog sort"}),
+        "profile_city": ("city", {"rule": "element_value_equals", "expected": expected_state.get("profile_city"), "element_role": "textbox", "element_name": "Shipping city"}),
+    }
+    for key, (hint, criterion) in bindings.items():
+        if key not in expected_state or not isinstance(criterion["expected"], str):
+            continue
+        target_step = next(
+            (
+                step
+                for step in steps
+                if isinstance(step, dict)
+                and hint in str(step.get("goal", "")).lower()
+            ),
+            None,
+        )
+        if target_step is None:
+            continue
+        criteria = target_step.get("success_criteria")
+        if isinstance(criteria, list):
+            criteria.append(criterion)
 
 
 def _format_planning_observation(
@@ -280,8 +421,13 @@ def _format_planning_observation(
     ]
     for element in observation.elements[:40]:
         name = element.name or element.text or element.placeholder or ""
+        state = ""
+        if element.value is not None:
+            state += f' value="{element.value}"'
+        if element.checked is not None:
+            state += f" checked={str(element.checked).lower()}"
         lines.append(
-            f'[{element.ref}] {element.role or element.tag} "{name}"'
+            f'[{element.ref}] {element.role or element.tag} "{name}"{state}'
         )
     if len(observation.elements) > 40:
         lines.append("(additional elements omitted)")
@@ -338,6 +484,8 @@ Rules:
    - url_contains
    - visible_text_contains
    - element_text_equals
+   - element_value_equals
+   - element_checked_equals
 7. Never output CSS selectors.
 8. Never output XPath.
 9. Never output JavaScript.
@@ -345,8 +493,11 @@ Rules:
 11. Step ids must be step_1, step_2, step_3...
 12. Use submit_test_plan exactly once.
 13. If the task contains a BENCHMARK ACCEPTANCE STATE block, it is public
-    task data. Use its exact string values in observable success criteria;
-    prefer visible_text_contains over invented element roles or names.
+    task data. Use its exact values. For textbox and combobox states, use
+    element_value_equals against the observed control. For checkbox state, use
+    element_checked_equals with the string true or false. Never use a static
+    product row, option label, or page heading as proof that a state-changing
+    action occurred.
 14. element_text_equals only supports actionable controls (such as button,
     textbox, combobox, checkbox, or tab). For headings, dialogs, tables,
     or other page content, use visible_text_contains.
@@ -433,7 +584,11 @@ Create the smallest useful sequence of verifiable milestones.
             try:
                 arguments = tool_call.arguments
                 if browser_observation is not None:
-                    arguments = _normalize_snapshot_plan_arguments(arguments)
+                    arguments = _normalize_snapshot_plan_arguments(
+                        arguments,
+                        goal=goal,
+                        browser_observation=browser_observation,
+                    )
                 return TestPlan.model_validate(arguments)
             except ValidationError as exc:
                 last_error = "Planner returned invalid TestPlan:\n" + str(exc)

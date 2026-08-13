@@ -40,6 +40,10 @@ def format_observation(observation: BrowserObservation) -> str:
             details: list[str] = []
             if element.placeholder:
                 details.append(f'placeholder="{element.placeholder}"')
+            if element.value is not None:
+                details.append(f'value="{element.value}"')
+            if element.checked is not None:
+                details.append(f"checked={str(element.checked).lower()}")
             if not element.enabled:
                 details.append("disabled")
             suffix = f" [{', '.join(details)}]" if details else ""
@@ -69,12 +73,13 @@ class BrowserActor:
         observation: BrowserObservation,
         history: list[dict[str, Any]],
         target_url: str,
+        require_action: bool = False,
     ) -> ActorDecision:
         system_prompt = """
 You are the Actor of WebPilot-QA, a browser testing agent.
 
 Choose exactly one next action. Use only the supplied browser tools. For
-click/fill, use only refs from the CURRENT observation. Never emit CSS
+click/fill/select_option, use only refs from the CURRENT observation. Never emit CSS
 selectors, XPath, JavaScript, shell commands, or invented refs. Refs expire
 after every action because the page is observed again.
 
@@ -86,6 +91,14 @@ DONE: <short evidence-based reason>
 
 Do not claim DONE without page-state evidence.
         """.strip()
+
+        if require_action:
+            system_prompt += (
+                "\n\nThis plan step requires a real browser state change. "
+                "You must make at least one browser tool call before DONE; "
+                "static labels or option names already visible on the page "
+                "are not evidence that an action was completed."
+            )
 
         user_prompt = f"""
 GOAL:
