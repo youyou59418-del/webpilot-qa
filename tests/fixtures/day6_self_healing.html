@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <title>
+        WebPilot Day 6 Self-Healing
+    </title>
+
+    <style>
+        body {
+            font-family:
+                Arial,
+                sans-serif;
+
+            max-width: 760px;
+
+            margin: 40px auto;
+        }
+
+        button {
+            margin: 8px;
+
+            padding:
+                10px 18px;
+
+            font-size: 16px;
+        }
+
+        #status {
+            margin-top: 24px;
+
+            font-size: 20px;
+
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>
+    Account Portal
+</h1>
+
+<p>
+    Day 6 controlled DOM drift fixture
+</p>
+
+<div id="controls">
+
+    <button
+        id="cancel-btn"
+        type="button"
+        onclick="cancelAction()"
+    >
+        Cancel
+    </button>
+
+    <button
+        id="login-btn"
+        type="button"
+        data-testid="auth-action"
+        aria-label="Login"
+        onclick="authenticate()"
+    >
+        Login
+    </button>
+
+    <button
+        id="mutate-btn"
+        type="button"
+        data-testid="mutate-dom"
+        onclick="mutateDOM()"
+    >
+        Mutate DOM
+    </button>
+
+</div>
+
+<div id="status">
+    Not authenticated
+</div>
+
+
+<script>
+
+function getMode() {
+    const params =
+        new URLSearchParams(
+            window.location.search
+        );
+
+    return (
+        params.get("mode")
+        || "combined"
+    );
+}
+
+
+function authenticate() {
+    document.getElementById(
+        "status"
+    ).textContent =
+        "Authenticated";
+}
+
+
+function cancelAction() {
+    document.getElementById(
+        "status"
+    ).textContent =
+        "Cancelled";
+}
+
+
+function helpAction() {
+    document.getElementById(
+        "status"
+    ).textContent =
+        "Help opened";
+}
+
+
+function fakeAuthenticate() {
+    document.getElementById(
+        "status"
+    ).textContent =
+        "Wrong authentication target";
+}
+
+
+function mutateDOM() {
+    const mode = getMode();
+
+    const controls =
+        document.getElementById(
+            "controls"
+        );
+
+    if (mode === "rename") {
+        controls.innerHTML = `
+            <button
+                id="login-btn"
+                type="button"
+                data-testid="auth-action"
+                aria-label="Sign in"
+                onclick="authenticate()"
+            >
+                Sign in
+            </button>
+
+            <button
+                id="cancel-btn"
+                type="button"
+                onclick="cancelAction()"
+            >
+                Cancel
+            </button>
+
+            <button
+                id="mutate-btn"
+                type="button"
+                data-testid="mutate-dom"
+                onclick="mutateDOM()"
+            >
+                Mutate DOM
+            </button>
+        `;
+
+        return;
+    }
+
+
+    if (mode === "id") {
+        controls.innerHTML = `
+            <button
+                id="auth-login-v2"
+                type="button"
+                data-testid="auth-action"
+                aria-label="Login"
+                onclick="authenticate()"
+            >
+                Login
+            </button>
+
+            <button
+                id="cancel-v2"
+                type="button"
+                onclick="cancelAction()"
+            >
+                Cancel
+            </button>
+
+            <button
+                id="mutate-v2"
+                type="button"
+                data-testid="mutate-dom"
+                onclick="mutateDOM()"
+            >
+                Mutate DOM
+            </button>
+        `;
+
+        return;
+    }
+
+
+    if (mode === "structure") {
+        controls.innerHTML = `
+            <section>
+                <div class="nested">
+                    <div class="actions">
+                        <button
+                            id="login-btn"
+                            type="button"
+                            data-testid="auth-action"
+                            aria-label="Login"
+                            onclick="authenticate()"
+                        >
+                            Login
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <button
+                id="cancel-btn"
+                type="button"
+                onclick="cancelAction()"
+            >
+                Cancel
+            </button>
+
+            <button
+                id="mutate-btn"
+                type="button"
+                data-testid="mutate-dom"
+                onclick="mutateDOM()"
+            >
+                Mutate DOM
+            </button>
+        `;
+
+        return;
+    }
+
+
+    if (mode === "ambiguous") {
+        controls.innerHTML = `
+            <button
+                id="auth-a"
+                type="button"
+                aria-label="Sign in"
+                onclick="authenticate()"
+            >
+                Sign in
+            </button>
+
+            <button
+                id="auth-b"
+                type="button"
+                aria-label="Sign in"
+                onclick="fakeAuthenticate()"
+            >
+                Sign in
+            </button>
+
+            <button
+                id="cancel-new"
+                type="button"
+                onclick="cancelAction()"
+            >
+                Cancel
+            </button>
+        `;
+
+        return;
+    }
+
+
+    controls.innerHTML = `
+        <button
+            id="help-new"
+            type="button"
+            onclick="helpAction()"
+        >
+            Help
+        </button>
+
+        <div class="outer-shell">
+            <section class="auth-section">
+                <div class="action-wrapper">
+                    <button
+                        id="auth-login-v3"
+                        type="button"
+                        aria-label="Sign in"
+                        onclick="authenticate()"
+                    >
+                        Sign in
+                    </button>
+                </div>
+            </section>
+        </div>
+
+        <button
+            id="cancel-new"
+            type="button"
+            onclick="cancelAction()"
+        >
+            Cancel
+        </button>
+    `;
+}
+
+</script>
+
+</body>
+</html>
