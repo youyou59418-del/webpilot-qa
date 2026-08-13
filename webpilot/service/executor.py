@@ -1,0 +1,122 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Protocol
+
+from webpilot.agents.actor import BrowserActor
+from webpilot.agents.loop import SingleBrowserAgent
+from webpilot.agents.planned_loop import PlannedBrowserAgent
+from webpilot.agents.planner import BrowserPlanner
+from webpilot.artifacts.store import ArtifactStore
+from webpilot.browser.observation import ObservationEngine
+from webpilot.browser.runtime import BrowserRuntime
+from webpilot.browser.tools import BrowserToolExecutor
+from webpilot.llm.adapter import OpenAICompatibleLLM
+from webpilot.runs.models import RunRecord, RunStatus, WorkerExecutionResult
+from webpilot.safety.gate import SafetyGate
+from webpilot.verifier.rules import RuleVerifier
+
+
+class RunExecutor(Protocol):
+    async def execute(
+        self,
+        record: RunRecord,
+        *,
+        cancel_requested: Callable[[], bool],
+    ) -> WorkerExecutionResult:
+        ...
+
+
+class WebPilotRunExecutor:
+    """Production adapter from a durable Day 8 run to the Day 7 workflow."""
+
+    def __init__(self, *, artifact_store: ArtifactStore) -> None:
+        self.artifact_store = artifact_store
+
+    async def execute(
+        self,
+        record: RunRecord,
+        *,
+        cancel_requested: Callable[[], bool],
+    ) -> WorkerExecutionResult:
+        if cancel_requested():
+            return WorkerExecutionResult(
+                status=RunStatus.CANCELLED,
+                result={"reason": "cancelled before browser startup"},
+            )
+
+        try:
+            llm = OpenAICompatibleLLM.from_env()
+        except RuntimeError as exc:
+            return WorkerExecutionResult(
+                status=RunStatus.FAILED,
+                result={"error": f"LLM configuration error: {exc}"},
+            )
+
+        runtime = BrowserRuntime()
+        observation_engine = ObservationEngine()
+        safety_gate = SafetyGate(
+            approved_fingerprints=set(record.approved_fingerprints)
+        )
+        agent = SingleBrowserAgent(
+            actor=BrowserActor(llm),
+            observation_engine=observation_engine,
+            tools=BrowserToolExecutor(
+                runtime,
+                observation_engine,
+                safety_gate=safety_gate,
+            ),
+            max_steps=record.request.max_steps,
+            cancellation_check=cancel_requested,
+        )
+        workflow = PlannedBrowserAgent(
+            planner=BrowserPlanner(llm),
+            agent=agent,
+            observation_engine=observation_engine,
+            verifier=RuleVerifier(),
+            enable_recovery=True,
+            max_retries=record.request.max_retries,
+        )
+
+        await runtime.start()
+        try:
+            result = await workflow.run(
+                goal=record.request.goal,
+                target_url=record.request.target_url,
+            )
+        finally:
+            await runtime.close()
+
+        payload = result.as_dict()
+        self.artifact_store.write_json(
+            run_id=record.run_id,
+            name="workflow.json",
+            payload=payload,
+        )
+        self.artifact_store.write_json(
+            run_id=record.run_id,
+            name="safety.json",
+            payload=[item.model_dump(mode="json") for item in safety_gate.audit_records],
+        )
+
+        if result.status == "passed":
+            return WorkerExecutionResult(
+                status=RunStatus.COMPLETED,
+                result=payload,
+            )
+        if result.status == "approval_required" and result.state is not None:
+            assert result.state.approval is not None
+            return WorkerExecutionResult(
+                status=RunStatus.APPROVAL_REQUIRED,
+                result=payload,
+                approval=result.state.approval,
+            )
+        if result.status == "cancelled":
+            return WorkerExecutionResult(
+                status=RunStatus.CANCELLED,
+                result=payload,
+            )
+        return WorkerExecutionResult(
+            status=RunStatus.FAILED,
+            result=payload,
+        )

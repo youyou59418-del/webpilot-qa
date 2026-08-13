@@ -1,0 +1,140 @@
+from __future__ import annotations
+
+import asyncio
+import json
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
+
+from webpilot.artifacts.store import ArtifactStore
+from webpilot.runs.models import RunRequest, RunStatus
+from webpilot.service.executor import RunExecutor, WebPilotRunExecutor
+from webpilot.service.store import RunNotFoundError, SQLiteRunStore
+from webpilot.service.worker import RunWorker
+
+
+def create_app(
+    *,
+    store: SQLiteRunStore | None = None,
+    artifact_store: ArtifactStore | None = None,
+    executor: RunExecutor | None = None,
+    worker: RunWorker | None = None,
+) -> FastAPI:
+    """Build the Day 8 API without putting browser work in request handlers."""
+
+    project_root = Path(__file__).resolve().parents[2]
+    artifact_store = artifact_store or ArtifactStore(project_root / "artifacts" / "runs")
+    store = store or SQLiteRunStore(project_root / "artifacts" / "service" / "runs.sqlite")
+    worker = worker or RunWorker(
+        store=store,
+        artifact_store=artifact_store,
+        executor=executor or WebPilotRunExecutor(artifact_store=artifact_store),
+    )
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        await worker.start()
+        try:
+            yield
+        finally:
+            await worker.stop()
+
+    app = FastAPI(title="WebPilot-QA", version="0.8.0", lifespan=lifespan)
+    app.state.run_store = store
+    app.state.artifact_store = artifact_store
+    app.state.run_worker = worker
+
+    @app.get("/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok", "service": "webpilot-qa"}
+
+    @app.post("/runs", status_code=status.HTTP_202_ACCEPTED)
+    async def create_run(request: RunRequest) -> dict[str, object]:
+        record = store.create_run(
+            request=request,
+            artifact_dir=str(artifact_store.root),
+        )
+        await worker.enqueue(record.run_id)
+        return _run_payload(record)
+
+    @app.get("/runs/{run_id}")
+    async def get_run(run_id: str) -> dict[str, object]:
+        return _run_payload(_get_run_or_404(store, run_id))
+
+    @app.get("/runs/{run_id}/events")
+    async def get_events(
+        run_id: str,
+        after: int = Query(default=0, ge=0),
+    ) -> list[dict[str, object]]:
+        try:
+            events = store.list_events(run_id, after_sequence=after)
+        except RunNotFoundError:
+            raise _not_found(run_id) from None
+        return [event.model_dump(mode="json") for event in events]
+
+    @app.get("/runs/{run_id}/events/stream")
+    async def stream_events(
+        run_id: str,
+        after: int = Query(default=0, ge=0),
+        once: bool = False,
+    ) -> StreamingResponse:
+        _get_run_or_404(store, run_id)
+
+        async def event_stream() -> AsyncIterator[str]:
+            next_sequence = after
+            while True:
+                events = store.list_events(run_id, after_sequence=next_sequence)
+                for event in events:
+                    next_sequence = event.sequence
+                    payload = json.dumps(event.model_dump(mode="json"), ensure_ascii=False)
+                    yield f"event: {event.kind}\\ndata: {payload}\\n\\n"
+                record = store.get_run(run_id)
+                if once or (record.status in {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}):
+                    return
+                await asyncio.sleep(0.15)
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    @app.post("/runs/{run_id}/cancel")
+    async def cancel_run(run_id: str) -> dict[str, object]:
+        try:
+            record = store.request_cancel(run_id)
+        except RunNotFoundError:
+            raise _not_found(run_id) from None
+        return _run_payload(record)
+
+    @app.post("/runs/{run_id}/approve")
+    async def approve_run(run_id: str) -> dict[str, object]:
+        try:
+            record = store.approve(run_id)
+        except RunNotFoundError:
+            raise _not_found(run_id) from None
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        await worker.enqueue(record.run_id)
+        return _run_payload(record)
+
+    @app.get("/runs/{run_id}/artifacts")
+    async def list_artifacts(run_id: str) -> list[dict[str, str]]:
+        _get_run_or_404(store, run_id)
+        return [reference.__dict__ for reference in artifact_store.list_run(run_id)]
+
+    return app
+
+
+def _get_run_or_404(store: SQLiteRunStore, run_id: str):
+    try:
+        return store.get_run(run_id)
+    except RunNotFoundError:
+        raise _not_found(run_id) from None
+
+
+def _not_found(run_id: str) -> HTTPException:
+    return HTTPException(status_code=404, detail=f"Unknown run: {run_id}")
+
+
+def _run_payload(record) -> dict[str, object]:
+    return record.model_dump(mode="json")

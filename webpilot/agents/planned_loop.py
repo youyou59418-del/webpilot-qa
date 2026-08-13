@@ -5,6 +5,7 @@ from time import perf_counter
 from typing import Awaitable, Callable, Literal
 
 import asyncio
+import json
 
 from webpilot.agents.loop import AgentRunResult, SingleBrowserAgent
 from webpilot.agents.planner import BrowserPlanner, PlanStep, TestPlan
@@ -25,6 +26,7 @@ from webpilot.recovery.models import (
     RetryBudget,
 )
 from webpilot.recovery.policy import RecoveryPolicy
+from webpilot.safety.models import ApprovalRequest
 from webpilot.verifier.rules import RuleVerifier, VerificationResult
 
 
@@ -34,7 +36,18 @@ Day4Status = Literal[
     "execution_error",
     "verification_failed",
     "recovery_exhausted",
+    "approval_required",
+    "cancelled",
 ]
+
+
+@dataclass(frozen=True)
+class _StepFailure:
+    failure: FailureEvent
+    step: PlanStep
+    index: int
+    approval: ApprovalRequest | None = None
+    cancelled: bool = False
 
 
 @dataclass(frozen=True)
@@ -167,7 +180,32 @@ class PlannedBrowserAgent:
                     started_at=started_at,
                 )
 
-            failure, failed_step, failed_index = outcome
+            if outcome.cancelled:
+                state.status = "cancelled"
+                return self._result(
+                    status="cancelled",
+                    state=state,
+                    step_runs=step_runs,
+                    failed_step_id=outcome.step.id,
+                    started_at=started_at,
+                    error=outcome.failure.message,
+                )
+
+            if outcome.approval is not None:
+                state.status = "approval_required"
+                state.approval = outcome.approval
+                return self._result(
+                    status="approval_required",
+                    state=state,
+                    step_runs=step_runs,
+                    failed_step_id=outcome.step.id,
+                    started_at=started_at,
+                    error=outcome.failure.message,
+                )
+
+            failure = outcome.failure
+            failed_step = outcome.step
+            failed_index = outcome.index
             if not self.enable_recovery:
                 state.status = "failed"
                 return self._failure_result(
@@ -221,7 +259,7 @@ class PlannedBrowserAgent:
         step_runs: list[AgentRunResult],
         budget: RetryBudget,
         start_index: int,
-    ) -> tuple[FailureEvent, PlanStep, int] | None:
+    ) -> _StepFailure | None:
         for index in range(start_index, len(state.plan.steps)):
             step = state.plan.steps[index]
             state.current_step_index = index
@@ -243,8 +281,7 @@ class PlannedBrowserAgent:
             )
 
             if execution.status != "completed":
-                return (
-                    self.failure_classifier.from_exception(
+                failure = self.failure_classifier.from_exception(
                         exc=RuntimeError(
                             execution.error
                             or execution.message
@@ -259,9 +296,19 @@ class PlannedBrowserAgent:
                         ),
                         element_ref=self._last_element_ref(execution),
                         current_url=execution.final_observation.url,
-                    ),
-                    step,
-                    index,
+                    )
+                if execution.status == "cancelled":
+                    return _StepFailure(
+                        failure=failure,
+                        step=step,
+                        index=index,
+                        cancelled=True,
+                    )
+                return _StepFailure(
+                    failure=failure,
+                    step=step,
+                    index=index,
+                    approval=self._approval_from_execution(execution),
                 )
 
             verification = self.verifier.verify(
@@ -277,15 +324,15 @@ class PlannedBrowserAgent:
                 )
             )
             if verification.status != "PASS":
-                return (
-                    self.failure_classifier.from_verification(
+                return _StepFailure(
+                    failure=self.failure_classifier.from_verification(
                         verification=verification,
                         step_id=step.id,
                         retry_count=budget.retry_count,
                         current_url=execution.final_observation.url,
                     ),
-                    step,
-                    index,
+                    step=step,
+                    index=index,
                 )
 
         return None
@@ -539,6 +586,23 @@ class PlannedBrowserAgent:
             return None
         ref = execution.action_history[-1].arguments.get("ref")
         return ref if isinstance(ref, str) else None
+
+    @staticmethod
+    def _approval_from_execution(
+        execution: AgentRunResult,
+    ) -> ApprovalRequest | None:
+        if not execution.action_history:
+            return None
+        error = execution.action_history[-1].error or ""
+        prefix = "ApprovalRequiredError: APPROVAL_REQUIRED:"
+        if not error.startswith(prefix):
+            return None
+        try:
+            return ApprovalRequest.model_validate(
+                json.loads(error.removeprefix(prefix))
+            )
+        except (ValueError, json.JSONDecodeError):
+            return None
 
     @staticmethod
     def _format_recovery_context(failure: FailureEvent) -> str:

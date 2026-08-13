@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from webpilot.agents.actor import BrowserActor
 from webpilot.browser.observation import BrowserObservation, ObservationEngine
@@ -14,6 +14,7 @@ RunStatus = Literal[
     "max_steps_reached",
     "actor_error",
     "tool_error",
+    "cancelled",
 ]
 
 
@@ -104,6 +105,7 @@ class SingleBrowserAgent:
         observation_engine: ObservationEngine,
         tools: BrowserToolExecutor,
         max_steps: int = 6,
+        cancellation_check: Callable[[], bool] | None = None,
     ) -> None:
         if max_steps <= 0:
             raise ValueError("max_steps must be positive.")
@@ -111,6 +113,7 @@ class SingleBrowserAgent:
         self.observation_engine = observation_engine
         self.tools = tools
         self.max_steps = max_steps
+        self.cancellation_check = cancellation_check
 
     async def run(
         self,
@@ -128,6 +131,16 @@ class SingleBrowserAgent:
         observation = await self.observation_engine.observe(self.tools.runtime)
 
         for step in range(1, self.max_steps + 1):
+            if self._is_cancelled():
+                return self._result(
+                    status="cancelled",
+                    goal=goal,
+                    target_url=target_url,
+                    observation=observation,
+                    action_history=action_history,
+                    started_at=started_at,
+                    error="Run was cancelled before the next action.",
+                )
             try:
                 decision = await self.actor.decide(
                     goal=goal,
@@ -240,3 +253,9 @@ class SingleBrowserAgent:
     @staticmethod
     def _elapsed_ms(started_at: float) -> int:
         return round((perf_counter() - started_at) * 1000)
+
+    def _is_cancelled(self) -> bool:
+        return bool(
+            self.cancellation_check is not None
+            and self.cancellation_check()
+        )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import urlparse
 
 from webpilot.browser.observation import (
@@ -9,6 +9,17 @@ from webpilot.browser.observation import (
     ObservationEngine,
 )
 from webpilot.browser.runtime import BrowserRuntime
+
+
+class ActionSafetyGate(Protocol):
+    def authorize(
+        self,
+        *,
+        tool_name: str,
+        arguments: dict[str, Any],
+        observation_engine: ObservationEngine,
+    ) -> None:
+        ...
 
 
 BROWSER_TOOL_SCHEMAS: list[dict[str, Any]] = [
@@ -136,9 +147,12 @@ class BrowserToolExecutor:
         self,
         runtime: BrowserRuntime,
         observation_engine: ObservationEngine,
+        *,
+        safety_gate: ActionSafetyGate | None = None,
     ) -> None:
         self.runtime = runtime
         self.observation_engine = observation_engine
+        self.safety_gate = safety_gate
 
     async def execute(
         self,
@@ -151,6 +165,13 @@ class BrowserToolExecutor:
             )
         if not isinstance(arguments, dict):
             raise ToolInputError("Browser tool arguments must be an object.")
+
+        if self.safety_gate is not None:
+            self.safety_gate.authorize(
+                tool_name=tool_name,
+                arguments=arguments,
+                observation_engine=self.observation_engine,
+            )
 
         if tool_name == "open_url":
             return await self._open_url(arguments)

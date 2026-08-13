@@ -16,16 +16,20 @@ from webpilot.recovery.models import (
     FailureEvent,
     RecoveryDecision,
 )
+from webpilot.safety.models import ApprovalRequest
 from webpilot.verifier.rules import (
     VerificationResult,
 )
 
 
 RunStatus = Literal[
+    "queued",
     "planned",
     "running",
+    "approval_required",
     "completed",
     "failed",
+    "cancelled",
 ]
 
 
@@ -144,6 +148,8 @@ class Day4RunState(BaseModel):
     recovery_history: list[RecoveryRecord] = Field(
         default_factory=list,
     )
+
+    approval: ApprovalRequest | None = None
 
     status: RunStatus = "planned"
 
