@@ -80,6 +80,7 @@ class WebPilotRunExecutor:
         if variant == "single_agent":
             await runtime.start()
             trace_started = False
+            shopbench_state: dict[str, object] | None = None
             try:
                 await runtime.start_trace()
                 trace_started = True
@@ -87,6 +88,7 @@ class WebPilotRunExecutor:
                     goal=record.request.goal,
                     target_url=record.request.target_url,
                 )
+                shopbench_state = await self._shopbench_state(runtime)
             finally:
                 try:
                     await runtime.screenshot(artifact_dir / "final.png")
@@ -104,6 +106,7 @@ class WebPilotRunExecutor:
                 "passed" if single_result.status == "completed" else "execution_error"
             )
             payload["variant"] = variant
+            payload["shopbench_state"] = shopbench_state
             self.artifact_store.write_json(
                 run_id=record.run_id,
                 name="workflow.json",
@@ -131,10 +134,12 @@ class WebPilotRunExecutor:
             enable_verifier=variant != "no_verifier",
             enable_recovery=variant != "no_recovery",
             max_retries=record.request.max_retries,
+            bootstrap_target=True,
         )
 
         await runtime.start()
         trace_started = False
+        shopbench_state: dict[str, object] | None = None
         try:
             await runtime.start_trace()
             trace_started = True
@@ -142,6 +147,7 @@ class WebPilotRunExecutor:
                 goal=record.request.goal,
                 target_url=record.request.target_url,
             )
+            shopbench_state = await self._shopbench_state(runtime)
         finally:
             try:
                 await runtime.screenshot(artifact_dir / "final.png")
@@ -156,6 +162,7 @@ class WebPilotRunExecutor:
             await runtime.close()
 
         payload = result.as_dict()
+        payload["shopbench_state"] = shopbench_state
         self.artifact_store.write_json(
             run_id=record.run_id,
             name="workflow.json",
@@ -188,3 +195,18 @@ class WebPilotRunExecutor:
             status=RunStatus.FAILED,
             result=payload,
         )
+
+    @staticmethod
+    async def _shopbench_state(runtime: BrowserRuntime) -> dict[str, object] | None:
+        """Read ShopBench's public controlled-state oracle when available."""
+        try:
+            value = await runtime.page.evaluate(
+                """() => (
+                    typeof window.__shopbench_state === "function"
+                        ? window.__shopbench_state()
+                        : null
+                )"""
+            )
+        except Exception:
+            return None
+        return value if isinstance(value, dict) else None

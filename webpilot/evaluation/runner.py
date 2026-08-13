@@ -5,6 +5,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import UTC, datetime
+
 from pathlib import Path
 from typing import Any, Literal
 
@@ -120,10 +121,19 @@ class EvaluationRunner:
 
         result = record.get("result") if isinstance(record.get("result"), dict) else {}
         workflow_status = result.get("status")
+        state_mismatch: str | None = None
         if record.get("status") == "approval_required":
             status: Literal["passed", "failed", "blocked_by_safety", "skipped"] = "blocked_by_safety"
         elif record.get("status") == "completed" and workflow_status == "passed":
-            status = "passed"
+            state_mismatch = self._validate_shopbench_state(
+                task,
+                final_shopbench_state=(
+                    result.get("shopbench_state")
+                    if isinstance(result.get("shopbench_state"), dict)
+                    else None
+                ),
+            )
+            status = "passed" if state_mismatch is None else "failed"
         else:
             status = "failed"
         state = result.get("state") if isinstance(result.get("state"), dict) else {}
@@ -139,8 +149,41 @@ class EvaluationRunner:
             tool_calls=len(history),
             retries=len(recovery),
             run_id=run_id,
-            failure_category=(None if status == "passed" else str(workflow_status or record.get("status"))),
+            failure_category=(
+                None
+                if status == "passed"
+                else ("benchmark_state_mismatch" if state_mismatch else str(workflow_status or record.get("status")))
+            ),
+            note=state_mismatch,
         )
+
+    def _validate_shopbench_state(
+        self,
+        task: BenchTask,
+        *,
+        final_shopbench_state: dict[str, Any] | None,
+    ) -> str | None:
+        """Independently compare the page's controlled state to the task oracle.
+
+        Model-produced success criteria decide workflow completion; ShopBench's
+        public expected state decides the evaluation score.  The executor
+        captures the page state from its isolated browser context before that
+        context closes, so default option text cannot be mistaken for a
+        completed filter/search action.
+        """
+        final_state = final_shopbench_state
+        if final_state is None:
+            return "Workflow did not record a ShopBench final state."
+        mismatches = []
+        for key, expected in task.expected_state.items():
+            actual = final_state.get(key)
+            if key == "cart_contains":
+                matched = expected in actual if isinstance(actual, list) else False
+            else:
+                matched = actual == expected
+            if not matched:
+                mismatches.append(f"{key}: expected {expected!r}, observed {actual!r}")
+        return "; ".join(mismatches) if mismatches else None
 
     @staticmethod
     def _benchmark_goal(task: BenchTask) -> str:

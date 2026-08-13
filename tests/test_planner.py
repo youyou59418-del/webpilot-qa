@@ -10,6 +10,7 @@ from webpilot.agents.planner import (
     PlannerOutputError,
     TestPlan as PlanModel,
 )
+from webpilot.browser.observation import BrowserObservation
 
 
 def test_plan_rejects_empty_steps() -> None:
@@ -305,3 +306,55 @@ async def test_planner_repairs_one_invalid_structured_output() -> None:
 
     assert llm.calls == 2
     assert plan.steps[0].success_criteria[0].expected == "Ready"
+
+
+class SnapshotCompatibilityLLM:
+    async def chat(self, *, messages, tools):
+        assert "CURRENT BROWSER SNAPSHOT" in messages[-1]["content"]
+        rule_enum = (
+            tools[0]["function"]["parameters"]["properties"]["steps"]
+            ["items"]["properties"]["success_criteria"]["items"]
+            ["properties"]["rule"]["enum"]
+        )
+        assert rule_enum == ["url_contains", "visible_text_contains"]
+        return SimpleNamespace(
+            tool_call=SimpleNamespace(
+                name="submit_test_plan",
+                arguments={
+                    "steps": [
+                        {
+                            "id": "step_1",
+                            "goal": "Open the help dialog.",
+                            "risk_level": "L0",
+                            "success_criteria": [
+                                {
+                                    "rule": "element_text_equals",
+                                    "expected": "ShopBench help",
+                                    "element_role": "dialog",
+                                    "element_name": "title",
+                                }
+                            ],
+                        }
+                    ]
+                },
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_planner_normalizes_legacy_element_rule_with_snapshot() -> None:
+    plan = await BrowserPlanner(SnapshotCompatibilityLLM()).plan(
+        goal="Open help.",
+        target_url="file:///fixture.html",
+        browser_observation=BrowserObservation(
+            url="file:///fixture.html",
+            title="Fixture",
+            visible_text="ShopBench help",
+        ),
+    )
+
+    criterion = plan.steps[0].success_criteria[0]
+    assert criterion.rule == "visible_text_contains"
+    assert criterion.expected == "ShopBench help"
+    assert criterion.element_role is None
+    assert criterion.element_name is None

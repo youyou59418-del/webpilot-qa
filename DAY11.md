@@ -1,23 +1,24 @@
-# Day 11 - Evaluation and Ablation
+# Day 11 - Strict Evaluation and Ablation
 
-The evaluation runner consumes the fixed ShopBench task contract through the Day 8 API and writes JSON, CSV, and Markdown artifacts. It records task ID, difficulty, run ID, terminal result, duration, tool calls, retries, and failure category.
+The evaluation runner creates a durable API run for every fixed ShopBench task and writes JSON, CSV, Markdown and SVG evidence. A live-model score is accepted only when both conditions hold:
+
+1. WebPilot's independent browser verifier reports workflow completion.
+2. The executor captures the ShopBench public controlled state before closing its browser context, and every key in the task's `expected_state` matches that captured state.
+
+This second condition prevents default option text from being incorrectly scored as a completed action.
 
 ```bash
-# Contract smoke check: does not claim a model success rate.
-./.venv/bin/python scripts/run_day11_evaluation.py --mode dry-run --output-dir artifacts/evaluation/day11/dry-run
+# Contract smoke check: never a model metric.
+./.venv/bin/python scripts/run_day11_evaluation.py --mode dry-run   --output-dir artifacts/evaluation/day11/dry-run
 
-# Live model evaluation after ShopBench, API/Worker and a configured LLM are running.
-./.venv/bin/python scripts/run_day11_evaluation.py --mode live --model-name Qwen2.5-7B-Instruct --limit 5 --output-dir artifacts/evaluation/day11/qwen-gate
+# Strict full evaluation: one fresh browser context per task.
+./.venv/bin/python scripts/run_day11_evaluation.py --mode live --variant full   --model-name Qwen2.5-7B-Instruct-vllm --max-steps 6 --max-retries 2   --output-dir artifacts/evaluation/day11/qwen-full-100-strict
 
-# A controlled ablation gate: same task IDs, model, four-action budget and no retries.
-for variant in single_agent no_verifier no_recovery no_self_healing full; do
-  ./.venv/bin/python scripts/run_day11_evaluation.py --mode live --variant "$variant" \
-    --model-name Qwen2.5-7B-Instruct --task-id E01 --task-id E02 --task-id E05 \
-    --max-steps 4 --max-retries 0 --output-dir "artifacts/evaluation/day11/ablation/$variant"
+# Controlled ablation: identical task IDs, model and budgets for every row.
+for variant in full single_agent no_verifier no_recovery no_self_healing; do
+  ./.venv/bin/python scripts/run_day11_evaluation.py --mode live --variant "$variant"     --model-name Qwen2.5-7B-Instruct-vllm     --task-id E05 --task-id E07 --task-id E08 --task-id E09 --task-id E29     --max-steps 6 --max-retries 2     --output-dir "artifacts/evaluation/day11/qwen-ablation-strict/$variant"
 done
-./.venv/bin/python scripts/summarize_day11_ablations.py \
-  --input-root artifacts/evaluation/day11/ablation \
-  --output-dir artifacts/evaluation/day11/ablation/summary
+./.venv/bin/python scripts/summarize_day11_ablations.py   --input-root artifacts/evaluation/day11/qwen-ablation-strict   --output-dir artifacts/evaluation/day11/qwen-ablation-strict/summary
 ```
 
-Run each ablation with the same task IDs, model, context budget and retries. Only compare `live_model` reports; a `dry_run` validates contracts but is deliberately excluded from performance claims.
+The verified Qwen 7B strict baseline is 8/100. This is a genuine baseline, not a completion claim; use the same strict runner for later prompt, model or agent changes.

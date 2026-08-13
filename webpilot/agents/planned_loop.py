@@ -9,7 +9,7 @@ import json
 
 from webpilot.agents.loop import AgentRunResult, SingleBrowserAgent
 from webpilot.agents.planner import BrowserPlanner, PlanStep, TestPlan
-from webpilot.browser.observation import ObservationEngine
+from webpilot.browser.observation import BrowserObservation, ObservationEngine
 from webpilot.graph.state import (
     ActionRecord,
     Day4RunState,
@@ -101,6 +101,7 @@ class PlannedBrowserAgent:
         recovery_policy: RecoveryPolicy | None = None,
         failure_classifier: FailureClassifier | None = None,
         max_retries: int = 2,
+        bootstrap_target: bool = False,
         short_wait_s: float = 0.25,
         wait: Callable[[float], Awaitable[None]] | None = None,
     ) -> None:
@@ -122,6 +123,7 @@ class PlannedBrowserAgent:
         self.recovery_policy = recovery_policy or RecoveryPolicy()
         self.failure_classifier = failure_classifier or FailureClassifier()
         self.max_retries = max_retries
+        self.bootstrap_target = bootstrap_target
         self.short_wait_s = short_wait_s
         self.wait = wait or asyncio.sleep
 
@@ -137,10 +139,34 @@ class PlannedBrowserAgent:
             raise ValueError("target_url must not be empty.")
 
         started_at = perf_counter()
+        planning_observation = None
+        if self.bootstrap_target:
+            try:
+                await self.agent.tools.execute(
+                    "open_url",
+                    {"url": target_url},
+                )
+                planning_observation = await self.observation_engine.observe(
+                    self.agent.tools.runtime
+                )
+            except Exception as exc:
+                return self._result(
+                    status="plan_error",
+                    state=None,
+                    step_runs=[],
+                    failed_step_id=None,
+                    started_at=started_at,
+                    error=(
+                        "Unable to capture the initial browser snapshot: "
+                        f"{type(exc).__name__}: {exc}"
+                    ),
+                )
+
         initial_plan = await self._plan_or_result(
             goal=goal,
             target_url=target_url,
             recovery_context=None,
+            browser_observation=planning_observation,
             started_at=started_at,
         )
         if isinstance(initial_plan, Day4RunResult):
@@ -158,6 +184,11 @@ class PlannedBrowserAgent:
                     plan=initial_plan,
                 )
             ],
+            observation=(
+                summarize_observation(planning_observation)
+                if planning_observation is not None
+                else None
+            ),
             status="running",
         )
         step_runs: list[AgentRunResult] = []
@@ -454,10 +485,14 @@ class PlannedBrowserAgent:
     ) -> Day4RunResult | None:
         next_attempt = state.plan_attempt + 1
         recovery_context = self._format_recovery_context(failure)
+        browser_observation = await self.observation_engine.observe(
+            self.agent.tools.runtime
+        )
         plan_or_result = await self._plan_or_result(
             goal=state.task,
             target_url=state.target_url,
             recovery_context=recovery_context,
+            browser_observation=browser_observation,
             started_at=started_at,
             state=state,
             step_runs=step_runs,
@@ -483,6 +518,7 @@ class PlannedBrowserAgent:
         goal: str,
         target_url: str,
         recovery_context: str | None,
+        browser_observation: BrowserObservation | None = None,
         started_at: float,
         state: Day4RunState | None = None,
         step_runs: list[AgentRunResult] | None = None,
@@ -492,6 +528,7 @@ class PlannedBrowserAgent:
                 goal=goal,
                 target_url=target_url,
                 recovery_context=recovery_context,
+                browser_observation=browser_observation,
             )
         except Exception as exc:
             if state is not None:

@@ -29,3 +29,37 @@ def test_live_goal_includes_the_public_shopbench_oracle() -> None:
     assert goal.startswith(task.goal)
     assert "BENCHMARK ACCEPTANCE STATE" in goal
     assert '"dialog_open": "ShopBench help"' in goal
+
+
+def test_shopbench_state_oracle_rejects_default_option_text_false_positive() -> None:
+    task = get_task("E21")
+    assert task is not None
+    runner = EvaluationRunner(api_url="http://api.test", shopbench_url="http://shop.test")
+
+    mismatch = runner._validate_shopbench_state(
+        task,
+        final_shopbench_state={
+            "category": "All",
+            "search": "",
+            "cart_count": 0,
+        },
+    )
+
+    assert mismatch is not None
+    assert "category" in mismatch
+
+
+def test_shopbench_state_oracle_accepts_expected_cart_membership() -> None:
+    task = get_task("E29")
+    assert task is not None
+    runner = EvaluationRunner(api_url="http://api.test", shopbench_url="http://shop.test")
+
+    mismatch = runner._validate_shopbench_state(
+        task,
+        final_shopbench_state={
+            "cart_count": 1,
+            "cart_contains": ["Laptop Pro"],
+        },
+    )
+
+    assert mismatch is None
