@@ -6,6 +6,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Protocol
 
 from fastapi import FastAPI, HTTPException, Query, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,28 +14,47 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from webpilot.artifacts.store import ArtifactStore
 from webpilot.runs.models import RunRequest, RunStatus
-from webpilot.service.executor import RunExecutor, WebPilotRunExecutor
 from webpilot.service.console_view import build_console_view
+from webpilot.service.executor import RunExecutor, WebPilotRunExecutor
+from webpilot.service.postgres_store import PostgreSQLRunStore
+from webpilot.service.queue import build_run_queue_from_env
 from webpilot.service.store import RunNotFoundError, SQLiteRunStore
 from webpilot.service.worker import RunWorker
 
 
+class RunStore(Protocol):
+    def create_run(self, *, request: RunRequest, artifact_dir: str): ...
+    def get_run(self, run_id: str): ...
+    def list_events(self, run_id: str, *, after_sequence: int = 0): ...
+    def request_cancel(self, run_id: str): ...
+    def approve(self, run_id: str): ...
+
+
+def build_run_store(*, project_root: Path) -> RunStore:
+    """Use PostgreSQL only when explicitly configured; keep SQLite deterministic for tests."""
+    database_url = os.environ.get("WEBPILOT_DATABASE_URL", "").strip()
+    if database_url:
+        return PostgreSQLRunStore(database_url)
+    return SQLiteRunStore(project_root / "artifacts" / "service" / "runs.sqlite")
+
+
 def create_app(
     *,
-    store: SQLiteRunStore | None = None,
+    store: RunStore | None = None,
     artifact_store: ArtifactStore | None = None,
     executor: RunExecutor | None = None,
     worker: RunWorker | None = None,
 ) -> FastAPI:
-    """Build the Day 8 API without putting browser work in request handlers."""
+    """Build the API; run state is always persisted before a worker is notified."""
 
     project_root = Path(__file__).resolve().parents[2]
     artifact_store = artifact_store or ArtifactStore(project_root / "artifacts" / "runs")
-    store = store or SQLiteRunStore(project_root / "artifacts" / "service" / "runs.sqlite")
+    store = store or build_run_store(project_root=project_root)
     worker = worker or RunWorker(
         store=store,
         artifact_store=artifact_store,
         executor=executor or WebPilotRunExecutor(artifact_store=artifact_store),
+        queue=build_run_queue_from_env(),
     )
 
     @asynccontextmanager
@@ -45,7 +65,7 @@ def create_app(
         finally:
             await worker.stop()
 
-    app = FastAPI(title="WebPilot-QA", version="0.8.0", lifespan=lifespan)
+    app = FastAPI(title="WebPilot-QA", version="1.0.0", lifespan=lifespan)
     cors_origins = [
         item.strip()
         for item in os.environ.get(
@@ -70,10 +90,7 @@ def create_app(
 
     @app.post("/runs", status_code=status.HTTP_202_ACCEPTED)
     async def create_run(request: RunRequest) -> dict[str, object]:
-        record = store.create_run(
-            request=request,
-            artifact_dir=str(artifact_store.root),
-        )
+        record = store.create_run(request=request, artifact_dir=str(artifact_store.root))
         await worker.enqueue(record.run_id)
         return _run_payload(record)
 
@@ -82,10 +99,7 @@ def create_app(
         return _run_payload(_get_run_or_404(store, run_id))
 
     @app.get("/runs/{run_id}/events")
-    async def get_events(
-        run_id: str,
-        after: int = Query(default=0, ge=0),
-    ) -> list[dict[str, object]]:
+    async def get_events(run_id: str, after: int = Query(default=0, ge=0)) -> list[dict[str, object]]:
         try:
             events = store.list_events(run_id, after_sequence=after)
         except RunNotFoundError:
@@ -94,9 +108,7 @@ def create_app(
 
     @app.get("/runs/{run_id}/events/stream")
     async def stream_events(
-        run_id: str,
-        after: int = Query(default=0, ge=0),
-        once: bool = False,
+        run_id: str, after: int = Query(default=0, ge=0), once: bool = False
     ) -> StreamingResponse:
         _get_run_or_404(store, run_id)
 
@@ -109,7 +121,7 @@ def create_app(
                     payload = json.dumps(event.model_dump(mode="json"), ensure_ascii=False)
                     yield f"event: {event.kind}\\ndata: {payload}\\n\\n"
                 record = store.get_run(run_id)
-                if once or (record.status in {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}):
+                if once or record.status in {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED}:
                     return
                 await asyncio.sleep(0.15)
 
@@ -160,7 +172,7 @@ def create_app(
     return app
 
 
-def _get_run_or_404(store: SQLiteRunStore, run_id: str):
+def _get_run_or_404(store: RunStore, run_id: str):
     try:
         return store.get_run(run_id)
     except RunNotFoundError:
