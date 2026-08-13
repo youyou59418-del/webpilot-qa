@@ -6,7 +6,7 @@ Final acceptance commands:
 
 ```bash
 ./.venv/bin/python -m pytest -q
-./.tools/node/bin/npm --prefix console run build
+PATH="$PWD/.tools/node/bin:$PATH" ./.tools/node/bin/npm --prefix console run build
 ./.venv/bin/python scripts/run_day11_evaluation.py --mode dry-run
 ```
 

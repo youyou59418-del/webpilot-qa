@@ -20,7 +20,8 @@ See [architecture](docs/ARCHITECTURE.md), [demo](docs/DEMO.md), [verified run st
 ./.venv/bin/python -m pytest -q
 ./.venv/bin/python scripts/run_shopbench.py --port 8080
 ./.venv/bin/python -m uvicorn webpilot.service.api:create_app --host 127.0.0.1 --port 8000
-./scripts/bootstrap_console.sh && ./.tools/node/bin/npm --prefix console run dev
+./scripts/bootstrap_console.sh
+PATH="$PWD/.tools/node/bin:$PATH" ./.tools/node/bin/npm --prefix console run dev
 ```
 
 Browse ShopBench at `http://127.0.0.1:8080/?reset=1` and the console at `http://127.0.0.1:3000`. Before issuing a real browser run, set `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL`, or source the local profile after Day 13.
