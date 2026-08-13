@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,6 +25,13 @@ class RunRequest(BaseModel):
     target_url: str = Field(min_length=1)
     max_steps: int = Field(default=6, ge=1, le=50)
     max_retries: int = Field(default=2, ge=0, le=10)
+    variant: Literal[
+        "full",
+        "single_agent",
+        "no_verifier",
+        "no_recovery",
+        "no_self_healing",
+    ] = "full"
 
 
 class RunEvent(BaseModel):

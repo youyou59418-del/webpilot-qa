@@ -54,6 +54,8 @@ class ActionRecord(BaseModel):
     tool_name: str
     arguments: dict[str, Any]
     result: dict[str, Any]
+    semantic_target: dict[str, Any] | None = None
+    healing: dict[str, Any] | None = None
     plan_attempt: int = Field(
         default=1,
         ge=1,

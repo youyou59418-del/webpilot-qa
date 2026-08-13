@@ -20,6 +20,28 @@ RuleType = Literal[
 ]
 
 
+# ``element_text_equals`` is verified against ObservationEngine.elements,
+# which deliberately contains only actionable controls.  Keeping the accepted
+# roles explicit prevents a plan from claiming that a non-observed heading or
+# dialog title was semantically verified.
+OBSERVABLE_ELEMENT_ROLES = frozenset({
+    "button",
+    "link",
+    "textbox",
+    "combobox",
+    "checkbox",
+    "radio",
+    "switch",
+    "tab",
+    "menuitem",
+    "option",
+    "slider",
+    "spinbutton",
+    "listbox",
+    "treeitem",
+})
+
+
 class SuccessCriterion(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -41,6 +63,11 @@ class SuccessCriterion(BaseModel):
                 raise ValueError(
                     "element_text_equals requires both "
                     "element_role and element_name"
+                )
+            if self.element_role not in OBSERVABLE_ELEMENT_ROLES:
+                raise ValueError(
+                    "element_text_equals only supports actionable roles "
+                    "exposed by ObservationEngine.elements"
                 )
 
         return self
@@ -231,6 +258,12 @@ Rules:
 10. For element_text_equals use semantic role/name.
 11. Step ids must be step_1, step_2, step_3...
 12. Use submit_test_plan exactly once.
+13. If the task contains a BENCHMARK ACCEPTANCE STATE block, it is public
+    task data. Use its exact string values in observable success criteria;
+    prefer visible_text_contains over invented element roles or names.
+14. element_text_equals only supports actionable controls (such as button,
+    textbox, combobox, checkbox, or tab). For headings, dialogs, tables,
+    or other page content, use visible_text_contains.
 
 The plan must be verifiable from the real browser state.
 """.strip()
@@ -256,46 +289,48 @@ USER TASK:
 Create the smallest useful sequence of verifiable milestones.
 """.strip()
 
-        reply = await self.llm.chat(
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_prompt,
-                },
-                {
-                    "role": "user",
-                    "content": user_prompt,
-                },
-            ],
-            tools=[
-                PLAN_TOOL_SCHEMA,
-            ],
-        )
-
-        tool_call = getattr(
-            reply,
-            "tool_call",
-            None,
-        )
-
-        if tool_call is None:
-            raise PlannerOutputError(
-                "Planner returned no structured tool call"
+        last_error = ""
+        for attempt in range(2):
+            repair_note = ""
+            if last_error:
+                repair_note = (
+                    "\n\nREPAIR REQUIRED:\n"
+                    f"Your previous plan was invalid: {last_error}\n"
+                    "Return a corrected submit_test_plan call only."
+                )
+            reply = await self.llm.chat(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": system_prompt,
+                    },
+                    {
+                        "role": "user",
+                        "content": user_prompt + repair_note,
+                    },
+                ],
+                tools=[
+                    PLAN_TOOL_SCHEMA,
+                ],
             )
 
-        if tool_call.name != "submit_test_plan":
-            raise PlannerOutputError(
-                "Planner returned unexpected tool: "
-                f"{tool_call.name}"
+            tool_call = getattr(
+                reply,
+                "tool_call",
+                None,
             )
+            if tool_call is None:
+                last_error = "Planner returned no structured tool call"
+                continue
+            if tool_call.name != "submit_test_plan":
+                last_error = (
+                    "Planner returned unexpected tool: "
+                    f"{tool_call.name}"
+                )
+                continue
+            try:
+                return TestPlan.model_validate(tool_call.arguments)
+            except ValidationError as exc:
+                last_error = "Planner returned invalid TestPlan:\n" + str(exc)
 
-        try:
-            return TestPlan.model_validate(
-                tool_call.arguments
-            )
-
-        except ValidationError as exc:
-            raise PlannerOutputError(
-                "Planner returned invalid TestPlan:\n"
-                f"{exc}"
-            ) from exc
+        raise PlannerOutputError(last_error)

@@ -10,6 +10,7 @@ from webpilot.agents.planner import BrowserPlanner
 from webpilot.artifacts.store import ArtifactStore
 from webpilot.browser.observation import ObservationEngine
 from webpilot.browser.runtime import BrowserRuntime
+from webpilot.browser.locator import SelfHealingLocator
 from webpilot.browser.tools import BrowserToolExecutor
 from webpilot.llm.adapter import OpenAICompatibleLLM
 from webpilot.runs.models import RunRecord, RunStatus, WorkerExecutionResult
@@ -55,6 +56,7 @@ class WebPilotRunExecutor:
 
         runtime = BrowserRuntime()
         artifact_dir = self.artifact_store.create_run(record.run_id)
+        variant = record.request.variant
         observation_engine = ObservationEngine()
         safety_gate = SafetyGate(
             approved_fingerprints=set(record.approved_fingerprints)
@@ -69,13 +71,65 @@ class WebPilotRunExecutor:
             ),
             max_steps=record.request.max_steps,
             cancellation_check=cancel_requested,
+            self_healing_locator=(
+                None
+                if variant == "no_self_healing"
+                else SelfHealingLocator()
+            ),
         )
+        if variant == "single_agent":
+            await runtime.start()
+            trace_started = False
+            try:
+                await runtime.start_trace()
+                trace_started = True
+                single_result = await agent.run(
+                    goal=record.request.goal,
+                    target_url=record.request.target_url,
+                )
+            finally:
+                try:
+                    await runtime.screenshot(artifact_dir / "final.png")
+                except Exception:
+                    pass
+                if trace_started:
+                    try:
+                        await runtime.stop_trace(artifact_dir / "trace.zip")
+                    except Exception:
+                        pass
+                await runtime.close()
+
+            payload = single_result.as_dict()
+            payload["status"] = (
+                "passed" if single_result.status == "completed" else "execution_error"
+            )
+            payload["variant"] = variant
+            self.artifact_store.write_json(
+                run_id=record.run_id,
+                name="workflow.json",
+                payload=payload,
+            )
+            self.artifact_store.write_json(
+                run_id=record.run_id,
+                name="safety.json",
+                payload=[item.model_dump(mode="json") for item in safety_gate.audit_records],
+            )
+            return WorkerExecutionResult(
+                status=(
+                    RunStatus.COMPLETED
+                    if payload["status"] == "passed"
+                    else RunStatus.FAILED
+                ),
+                result=payload,
+            )
+
         workflow = PlannedBrowserAgent(
             planner=BrowserPlanner(llm),
             agent=agent,
             observation_engine=observation_engine,
             verifier=RuleVerifier(),
-            enable_recovery=True,
+            enable_verifier=variant != "no_verifier",
+            enable_recovery=variant != "no_recovery",
             max_retries=record.request.max_retries,
         )
 

@@ -96,6 +96,7 @@ class PlannedBrowserAgent:
         agent: SingleBrowserAgent,
         observation_engine: ObservationEngine,
         verifier: RuleVerifier,
+        enable_verifier: bool = True,
         enable_recovery: bool = False,
         recovery_policy: RecoveryPolicy | None = None,
         failure_classifier: FailureClassifier | None = None,
@@ -116,6 +117,7 @@ class PlannedBrowserAgent:
         self.agent = agent
         self.observation_engine = observation_engine
         self.verifier = verifier
+        self.enable_verifier = enable_verifier
         self.enable_recovery = enable_recovery
         self.recovery_policy = recovery_policy or RecoveryPolicy()
         self.failure_classifier = failure_classifier or FailureClassifier()
@@ -263,9 +265,40 @@ class PlannedBrowserAgent:
         for index in range(start_index, len(state.plan.steps)):
             step = state.plan.steps[index]
             state.current_step_index = index
+            # A planner milestone may already be true because the target page
+            # has a useful default state or a previous step fulfilled it as a
+            # side effect.  Verify first so a smaller model is not invited to
+            # repeat a successful click solely to produce a DONE message.
+            if self.enable_verifier:
+                current_observation = await self.observation_engine.observe(
+                    self.agent.tools.runtime
+                )
+                preverification = self.verifier.verify(
+                    observation=current_observation,
+                    criteria=step.success_criteria,
+                )
+                if preverification.status == "PASS":
+                    state.observation = summarize_observation(current_observation)
+                    state.verification = preverification
+                    state.step_verifications.append(
+                        StepVerification(
+                            plan_step_id=step.id,
+                            result=preverification,
+                            plan_attempt=state.plan_attempt,
+                        )
+                    )
+                    continue
             execution = await self.agent.run(
                 goal=step.goal,
                 target_url=state.target_url,
+                completion_check=(
+                    lambda observation: self.verifier.verify(
+                        observation=observation,
+                        criteria=step.success_criteria,
+                    ).status == "PASS"
+                    if self.enable_verifier
+                    else None
+                ),
             )
             step_runs.append(execution)
             state.observation = summarize_observation(
@@ -310,6 +343,9 @@ class PlannedBrowserAgent:
                     index=index,
                     approval=self._approval_from_execution(execution),
                 )
+
+            if not self.enable_verifier:
+                continue
 
             verification = self.verifier.verify(
                 observation=execution.final_observation,
@@ -559,6 +595,8 @@ class PlannedBrowserAgent:
                 else {"ok": False, "error": record.error or "unknown error"}
             ),
             plan_attempt=plan_attempt,
+            semantic_target=record.semantic_target,
+            healing=record.healing,
         )
 
     def _result(

@@ -78,7 +78,6 @@ class PlannedSearchLLM:
                     arguments={"url": self.target_url},
                 ),
             ),
-            LLMReply(content="DONE: Product Search is visible."),
             LLMReply(
                 content="",
                 tool_call=LLMToolCall(
@@ -125,6 +124,61 @@ class FailingVerificationLLM(PlannedSearchLLM):
                                     }
                                 ],
                             }
+                        ]
+                    },
+                ),
+            )
+        self.actor_turn += 1
+        replies = [
+            LLMReply(
+                content="",
+                tool_call=LLMToolCall(
+                    name="open_url",
+                    arguments={"url": self.target_url},
+                ),
+            ),
+            LLMReply(content="DONE: The requested state is visible."),
+        ]
+        return replies[self.actor_turn - 1]
+
+
+class PreverifiedStepLLM(PlannedSearchLLM):
+    async def chat(
+        self,
+        *,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+    ) -> LLMReply:
+        names = {tool["function"]["name"] for tool in tools}
+        if names == {"submit_test_plan"}:
+            return LLMReply(
+                content="",
+                tool_call=LLMToolCall(
+                    name="submit_test_plan",
+                    arguments={
+                        "steps": [
+                            {
+                                "id": "step_1",
+                                "goal": "Open the product search page.",
+                                "risk_level": "L0",
+                                "success_criteria": [
+                                    {
+                                        "rule": "visible_text_contains",
+                                        "expected": "Product Search",
+                                    }
+                                ],
+                            },
+                            {
+                                "id": "step_2",
+                                "goal": "Confirm the page is already visible.",
+                                "risk_level": "L0",
+                                "success_criteria": [
+                                    {
+                                        "rule": "visible_text_contains",
+                                        "expected": "Product Search",
+                                    }
+                                ],
+                            },
                         ]
                     },
                 ),
@@ -206,6 +260,30 @@ async def test_day4_workflow_keeps_actor_done_separate_from_verification() -> No
     assert result.state is not None
     assert len(result.state.step_verifications) == 1
     assert result.state.step_verifications[0].result.status == "FAIL"
+
+
+@pytest.mark.asyncio
+async def test_day4_workflow_skips_a_step_already_proved_by_browser_state() -> None:
+    runtime = BrowserRuntime()
+    workflow = make_workflow(runtime, PreverifiedStepLLM(FIXTURE_URL))
+
+    await runtime.start()
+    try:
+        result = await workflow.run(
+            goal="Open the product search page and confirm it is visible.",
+            target_url=FIXTURE_URL,
+        )
+    finally:
+        await runtime.close()
+
+    assert result.status == "passed"
+    assert len(result.step_runs) == 1
+    assert result.state is not None
+    assert [item.plan_step_id for item in result.state.step_verifications] == [
+        "step_1",
+        "step_2",
+    ]
+    assert all(item.result.status == "PASS" for item in result.state.step_verifications)
 
 
 def test_day4_workflow_rejects_mismatched_observation_engine() -> None:

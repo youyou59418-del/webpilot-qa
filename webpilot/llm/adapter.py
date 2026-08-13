@@ -106,6 +106,7 @@ class OpenAICompatibleLLM:
             "messages": messages,
             "tools": tools,
             "tool_choice": "auto",
+            "parallel_tool_calls": False,
             "temperature": 0,
         }
         response = await asyncio.to_thread(self._post_json, payload)

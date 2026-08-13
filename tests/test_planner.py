@@ -148,6 +148,29 @@ def test_element_text_rule_requires_exact_semantic_target() -> None:
         )
 
 
+def test_element_text_rule_rejects_noninteractive_role() -> None:
+    with pytest.raises(ValidationError, match="actionable roles"):
+        PlanModel.model_validate(
+            {
+                "steps": [
+                    {
+                        "id": "step_1",
+                        "goal": "Check a dialog title.",
+                        "risk_level": "L0",
+                        "success_criteria": [
+                            {
+                                "rule": "element_text_equals",
+                                "expected": "Ready",
+                                "element_role": "dialog",
+                                "element_name": "title",
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
+
+
 class FakeLLM:
     async def chat(
         self,
@@ -237,3 +260,48 @@ async def test_planner_rejects_invalid_output() -> None:
             goal="Anything",
             target_url="file:///fixture.html",
         )
+
+
+class RepairingFakeLLM:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def chat(self, *, messages, tools):
+        self.calls += 1
+        arguments = {"steps": []}
+        if self.calls == 2:
+            assert "REPAIR REQUIRED" in messages[-1]["content"]
+            arguments = {
+                "steps": [
+                    {
+                        "id": "step_1",
+                        "goal": "Confirm readiness.",
+                        "risk_level": "L0",
+                        "success_criteria": [
+                            {
+                                "rule": "visible_text_contains",
+                                "expected": "Ready",
+                            }
+                        ],
+                    }
+                ]
+            }
+        return SimpleNamespace(
+            tool_call=SimpleNamespace(
+                name="submit_test_plan",
+                arguments=arguments,
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_planner_repairs_one_invalid_structured_output() -> None:
+    llm = RepairingFakeLLM()
+
+    plan = await BrowserPlanner(llm).plan(
+        goal="Confirm readiness.",
+        target_url="file:///fixture.html",
+    )
+
+    assert llm.calls == 2
+    assert plan.steps[0].success_criteria[0].expected == "Ready"
