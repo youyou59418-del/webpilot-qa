@@ -73,6 +73,18 @@ class ArtifactStore:
             if path.is_file()
         ]
 
+    def existing_path(self, *, run_id: str, name: str) -> Path:
+        """Return a checked artifact path without creating files or directories."""
+        if not _SAFE_COMPONENT.fullmatch(name):
+            raise ValueError("Artifact name must be a single safe file name.")
+        run_dir = self._run_dir(run_id, create=False)
+        path = (run_dir / name).resolve()
+        if path.parent != run_dir:
+            raise ValueError("Artifact path escapes the run directory.")
+        if not path.is_file():
+            raise FileNotFoundError(name)
+        return path
+
     @classmethod
     def redact(cls, value: Any) -> Any:
         if isinstance(value, dict):

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ShopBench v1 Controlled Store</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div><p class="kicker">WebPilot-QA / Day 10</p><h1>ShopBench v1</h1><p id="account-banner">Guest session</p></div>
+      <div class="header-actions"><button id="help-button" type="button">Open help dialog</button><button id="reset-button" type="button">Reset benchmark state</button><button id="cart-button" type="button">Cart (<span id="cart-count">0</span>)</button></div>
+    </header>
+    <main>
+      <section class="panel" aria-labelledby="session-heading"><h2 id="session-heading">Demo session</h2>
+        <div class="row"><label>Email<input id="email" aria-label="Demo account email" value="demo@shopbench.test" /></label><label>Password<input id="password" type="password" aria-label="Demo account password" value="demo-pass" /></label><button id="login-button" type="button">Log in with demo account</button></div>
+      </section>
+      <nav aria-label="Store sections" class="tabs"><button class="tab active" data-tab="Catalog" type="button">Catalog</button><button class="tab" data-tab="Orders" type="button">Orders</button><button class="tab" data-tab="Profile" type="button">Profile</button></nav>
+      <section id="catalog-panel" class="panel">
+        <h2>Catalog</h2><div class="row controls"><label>Search products<input id="search-input" aria-label="Search products" placeholder="e.g. laptop" /></label><label>Category<select id="category-select" aria-label="Category"><option>All</option><option>Electronics</option><option>Office</option><option>Wearables</option><option>Audio</option><option>Home</option></select></label><label class="check"><input id="stock-toggle" type="checkbox" /> In stock only</label><label>Sort<select id="sort-select" aria-label="Catalog sort"><option>Featured</option><option>Price: low to high</option><option>Price: high to low</option></select></label></div>
+        <div class="row"><button id="loading-button" type="button">Show loading state</button><button id="error-button" type="button">Show controlled error</button><button id="featured-button" type="button">Refresh featured offer</button></div>
+        <p id="loading-state" hidden aria-live="polite">Loading catalog…</p><section id="error-state" hidden role="alert"><p>Controlled catalog error.</p><button id="retry-button" type="button">Retry catalog request</button></section>
+        <p id="results-summary" aria-live="polite">Results: 10 products</p><div id="product-grid" class="product-grid" aria-label="Product results"></div>
+      </section>
+      <section id="orders-panel" class="panel" hidden><h2>Orders</h2><table><thead><tr><th>Order</th><th>Status</th><th>Total</th></tr></thead><tbody><tr><td>No completed orders</td><td>—</td><td>—</td></tr></tbody></table></section>
+      <section id="profile-panel" class="panel" hidden><h2>Profile and shipping form</h2><form id="profile-form"><div class="row"><label>Full name<input id="full-name" aria-label="Full name" required /></label><label>Shipping city<input id="shipping-city" aria-label="Shipping city" required /></label><button type="submit">Save profile</button></div></form></section>
+      <section class="panel"><h2>Inventory table</h2><table><thead><tr><th>SKU</th><th>Product</th><th>Stock</th><th>Action</th></tr></thead><tbody id="inventory-body"></tbody></table><div class="row pagination"><button id="previous-page" type="button">Previous inventory page</button><span id="page-indicator">Inventory page 1</span><button id="next-page" type="button">Next inventory page</button></div></section>
+    </main>
+    <aside id="cart-panel" class="cart" hidden><h2>Cart</h2><ul id="cart-items"></ul><button id="checkout-button" type="button">Open checkout confirmation</button></aside>
+    <dialog id="help-dialog"><h2>ShopBench help</h2><p>This local station is resettable and never contacts a real merchant.</p><button class="close-dialog" type="button">Close help dialog</button></dialog>
+    <dialog id="detail-dialog"><h2 id="detail-title">Product details</h2><p id="detail-content"></p><button class="close-dialog" type="button">Close product details</button></dialog>
+    <dialog id="checkout-dialog"><h2>Checkout confirmation</h2><p>This is a controlled benchmark action. Confirming only clears the local cart.</p><button id="confirm-checkout" type="button">Confirm simulated checkout</button><button class="close-dialog" type="button">Cancel checkout</button></dialog>
+    <p id="toast" class="toast" hidden role="status"></p>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

@@ -2,16 +2,19 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
 
 from webpilot.artifacts.store import ArtifactStore
 from webpilot.runs.models import RunRequest, RunStatus
 from webpilot.service.executor import RunExecutor, WebPilotRunExecutor
+from webpilot.service.console_view import build_console_view
 from webpilot.service.store import RunNotFoundError, SQLiteRunStore
 from webpilot.service.worker import RunWorker
 
@@ -43,6 +46,20 @@ def create_app(
             await worker.stop()
 
     app = FastAPI(title="WebPilot-QA", version="0.8.0", lifespan=lifespan)
+    cors_origins = [
+        item.strip()
+        for item in os.environ.get(
+            "WEBPILOT_CORS_ORIGINS",
+            "http://127.0.0.1:3000,http://localhost:3000",
+        ).split(",")
+        if item.strip()
+    ]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_origins,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type"],
+    )
     app.state.run_store = store
     app.state.artifact_store = artifact_store
     app.state.run_worker = worker
@@ -117,10 +134,28 @@ def create_app(
         await worker.enqueue(record.run_id)
         return _run_payload(record)
 
+    @app.get("/runs/{run_id}/console")
+    async def get_console_view(run_id: str) -> dict[str, object]:
+        record = _get_run_or_404(store, run_id)
+        return build_console_view(
+            record=record,
+            events=store.list_events(run_id),
+            artifact_store=artifact_store,
+        )
+
     @app.get("/runs/{run_id}/artifacts")
     async def list_artifacts(run_id: str) -> list[dict[str, str]]:
         _get_run_or_404(store, run_id)
         return [reference.__dict__ for reference in artifact_store.list_run(run_id)]
+
+    @app.get("/runs/{run_id}/artifacts/{name}")
+    async def get_artifact(run_id: str, name: str) -> FileResponse:
+        _get_run_or_404(store, run_id)
+        try:
+            path = artifact_store.existing_path(run_id=run_id, name=name)
+        except (FileNotFoundError, ValueError):
+            raise HTTPException(status_code=404, detail=f"Unknown artifact: {name}") from None
+        return FileResponse(path)
 
     return app
 
@@ -137,4 +172,4 @@ def _not_found(run_id: str) -> HTTPException:
 
 
 def _run_payload(record) -> dict[str, object]:
-    return record.model_dump(mode="json")
+    return ArtifactStore.redact(record.model_dump(mode="json"))

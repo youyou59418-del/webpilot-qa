@@ -1,0 +1,17 @@
+:root { color-scheme: dark; font-family: Arial, Helvetica, sans-serif; background: #09111f; color: #eaf2ff; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+main { max-width: 1440px; margin: 0 auto; padding: 34px 24px 56px; }
+header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+h1 { margin: 5px 0; font-size: clamp(30px, 4vw, 48px); letter-spacing: -0.04em; }
+h2 { margin: 0 0 14px; font-size: 17px; }
+.eyebrow { margin: 0; color: #72d7ff; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; font-size: 12px; }
+.muted { color: #a3b6ce; } .mono, pre { font-family: "SFMono-Regular", Consolas, monospace; }
+.card { background: #101d31; border: 1px solid #263b59; border-radius: 14px; padding: 20px; box-shadow: 0 12px 28px #0004; }
+.launch form { display: grid; gap: 14px; grid-template-columns: 1.4fr 1fr auto; align-items: end; }
+label { display: grid; gap: 7px; color: #a3b6ce; font-size: 13px; } input, textarea { width: 100%; color: #eaf2ff; background: #081321; border: 1px solid #38516f; border-radius: 8px; padding: 10px; font: inherit; } textarea { min-height: 72px; resize: vertical; }
+button { border: 0; border-radius: 8px; padding: 11px 14px; background: #3a8cff; color: white; cursor: pointer; font-weight: 700; } button.danger { background: #b83a4d; } button.approve { background: #179b76; }
+.message { color: #ffca82; } .status { padding: 8px 12px; border-radius: 999px; background: #33445f; font-weight: 700; white-space: nowrap; } .status-completed { background: #17795d; } .status-failed, .status-cancelled { background: #9f3547; } .status-approval_required { background: #9b6b1e; }
+.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 22px 0 12px; }.metric { padding: 16px; border-radius: 12px; background: #172840; }.metric span { display: block; color: #a3b6ce; font-size: 13px; }.metric strong { font-size: 24px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 22px; }.grid, .media-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }.media-grid { margin-top: 16px; } pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: #c9d9ee; font-size: 12px; line-height: 1.5; max-height: 390px; overflow: auto; } img { width: 100%; height: auto; border-radius: 8px; border: 1px solid #38516f; } a { color: #72d7ff; } li { margin: 8px 0; }
+@media (max-width: 850px) { header { display: grid; }.launch form, .grid, .media-grid, .metrics { grid-template-columns: 1fr; } }

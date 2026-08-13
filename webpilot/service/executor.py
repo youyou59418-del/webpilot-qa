@@ -54,6 +54,7 @@ class WebPilotRunExecutor:
             )
 
         runtime = BrowserRuntime()
+        artifact_dir = self.artifact_store.create_run(record.run_id)
         observation_engine = ObservationEngine()
         safety_gate = SafetyGate(
             approved_fingerprints=set(record.approved_fingerprints)
@@ -79,12 +80,25 @@ class WebPilotRunExecutor:
         )
 
         await runtime.start()
+        trace_started = False
         try:
+            await runtime.start_trace()
+            trace_started = True
             result = await workflow.run(
                 goal=record.request.goal,
                 target_url=record.request.target_url,
             )
         finally:
+            try:
+                await runtime.screenshot(artifact_dir / "final.png")
+            except Exception:
+                # An unavailable/closed page must not hide the workflow result.
+                pass
+            if trace_started:
+                try:
+                    await runtime.stop_trace(artifact_dir / "trace.zip")
+                except Exception:
+                    pass
             await runtime.close()
 
         payload = result.as_dict()

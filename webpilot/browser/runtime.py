@@ -54,6 +54,15 @@ class BrowserRuntime:
             )
         return self._page
 
+    @property
+    def context(self) -> BrowserContext:
+        if self._context is None:
+            raise RuntimeError(
+                "BrowserRuntime has not been started. "
+                "Call await runtime.start() first."
+            )
+        return self._context
+
     async def start(self) -> None:
         if self._page is not None:
             return
@@ -169,6 +178,19 @@ class BrowserRuntime:
             full_page=full_page,
         )
 
+        return output_path
+
+    async def start_trace(self) -> None:
+        await self.context.tracing.start(
+            screenshots=True,
+            snapshots=True,
+            sources=False,
+        )
+
+    async def stop_trace(self, path: str | Path) -> Path:
+        output_path = Path(path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        await self.context.tracing.stop(path=str(output_path))
         return output_path
 
     async def close(self) -> None:
