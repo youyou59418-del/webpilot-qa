@@ -18,7 +18,7 @@ export const apiBaseUrl = (
 async function asJson(response: Response) {
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(body || `Request failed (${response.status})`);
+    throw new Error(body || `请求失败 (${response.status})`);
   }
   return response.json();
 }
