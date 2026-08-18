@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Deliberately separate from webpilot-qa/.venv.
-runtime_root="${WEBPILOT_VLLM_HOME:-/root/autodl-tmp/vllm-qwen}"
+# Keep the inference runtime isolated from webpilot-qa/.venv.
+# This profile is validated for the AutoDL RTX 4090 host whose driver exposes
+# CUDA 12.6: vLLM 0.8.3 + PyTorch 2.6.0+cu124.
+runtime_root="${WEBPILOT_VLLM_HOME:-/root/autodl-tmp/vllm-qwen-cu121}"
 bootstrap_python="${VLLM_BOOTSTRAP_PYTHON:-/root/miniconda3/bin/python}"
 
 if [[ ! -x "${bootstrap_python}" ]]; then
@@ -16,15 +18,16 @@ if [[ ! -x "${runtime_root}/.venv/bin/python" ]]; then
   "${bootstrap_python}" -m venv "${runtime_root}/.venv"
 fi
 
-"${runtime_root}/.venv/bin/python" -m pip install --upgrade pip
-# Keep the whole vLLM/Torch family on one resolver-selected CUDA build.
-# Do not add a second PyTorch wheel index here: mixed torch/torchaudio builds
-# fail at vLLM import time.
-# FlashInfer may JIT-compile a sampling kernel on first startup; its `ninja`
-# executable must be present even though vLLM itself is otherwise installed.
-"${runtime_root}/.venv/bin/python" -m pip install vllm ninja
-"${runtime_root}/.venv/bin/python" - <<'PY'
+python_bin="${runtime_root}/.venv/bin/python"
+"${python_bin}" -m pip install --upgrade pip setuptools wheel ninja
+"${python_bin}" -m pip install "vllm==0.8.3"
+# Transformers 5.x changes the Qwen2 tokenizer interface expected by vLLM 0.8.3.
+# Pin the validated compatible pair instead of accepting the newest resolver result.
+"${python_bin}" -m pip install --upgrade --force-reinstall   "transformers==4.51.3" "numpy==2.1.3"
+"${python_bin}" -m pip check
+"${python_bin}" - <<'PY'
 import torch, vllm
-print({"torch": torch.__version__, "cuda": torch.version.cuda, "cuda_available": torch.cuda.is_available(), "vllm": vllm.__version__})
+print({"torch": torch.__version__, "cuda": torch.version.cuda,
+       "cuda_available": torch.cuda.is_available(), "vllm": vllm.__version__})
 assert torch.cuda.is_available(), "CUDA is not visible inside the independent vLLM environment."
 PY

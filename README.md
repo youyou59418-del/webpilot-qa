@@ -45,10 +45,10 @@ flowchart LR
 | 项目 | 已验证结果 | 证据 |
 | --- | --- | --- |
 | 自动化测试 | 109 通过，3 项环境相关跳过 | 项目测试记录 |
-| 中文 Demo 回归 | E05、E29 共 2/2 通过，均为 `live_model` | [Day14 报告](artifacts/evaluation/day14/qwen14b-cu124-vllm083-e05-e29/summary.md) |
+| 中文 Demo 回归 | E05、E29 共 2/2 通过，均为 `live_model` | [Day14 报告](docs/demo/evidence/day14/summary.md) |
 | E29 购物车回归 | 2 次工具调用、0 次重试，通过真实购物车状态验证 | Day14 `report.json` |
-| 14B 严格 100 任务基线 | 11 通过、26 安全拦截、63 失败 | Day13 严格基线，见下方边界说明 |
-| 消融任务切片 | 完整方案 3/5；移除恢复后 2/5；单智能体 0/5 | Day13 等预算消融 |
+| 14B 严格 100 任务基线 | 11 通过、26 安全拦截、63 失败 | [Day13 严格基线](docs/demo/evidence/day13/strict-100-report.json) |
+| 消融任务切片 | 完整方案 3/5；移除恢复后 2/5；单智能体 0/5 | [Day13 等预算消融](docs/demo/evidence/day13/ablation.md) |
 
 ### 指标边界与限制
 

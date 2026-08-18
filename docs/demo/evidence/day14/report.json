@@ -1,0 +1,36 @@
+{
+  "benchmark": "shopbench-v1",
+  "variant": "full",
+  "model_name": "Qwen2.5-14B-Instruct-GPTQ-Int4-vllm083-cu124",
+  "execution_mode": "live_model",
+  "started_at": "2026-08-17T06:17:16.270110Z",
+  "completed_at": "2026-08-17T06:17:31.344804Z",
+  "outcomes": [
+    {
+      "task_id": "E05",
+      "difficulty": "easy",
+      "status": "passed",
+      "duration_ms": 6515,
+      "tool_calls": 1,
+      "retries": 0,
+      "run_id": "859f38f1-38ca-47af-a8f4-fd2225daaede",
+      "failure_category": null,
+      "note": null
+    },
+    {
+      "task_id": "E29",
+      "difficulty": "easy",
+      "status": "passed",
+      "duration_ms": 8560,
+      "tool_calls": 2,
+      "retries": 0,
+      "run_id": "d1e1e066-a803-44e7-a063-85b3e24880d7",
+      "failure_category": null,
+      "note": null
+    }
+  ],
+  "metadata": {
+    "task_count": 2,
+    "api_url": "http://127.0.0.1:8000"
+  }
+}
