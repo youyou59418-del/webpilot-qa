@@ -38,7 +38,7 @@ flowchart LR
     V --> T
 ```
 
-详细说明：[系统架构](docs/ARCHITECTURE_CN.md)｜[Demo 操作](docs/DEMO_CN.md)｜[运行与评测状态](docs/RUN_STATUS_CN.md)｜[面试说明](docs/INTERVIEW_CN.md)。
+详细说明：[系统架构](docs/ARCHITECTURE_CN.md)｜[Demo 操作](docs/DEMO_CN.md)｜[运行与评测状态](docs/RUN_STATUS_CN.md)。
 
 ## 已验证证据
 
