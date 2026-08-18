@@ -74,10 +74,3 @@ PATH="$PWD/.tools/node/bin:$PATH" ./.tools/node/bin/npm --prefix console run dev
 ```
 
 真实模型运行需要额外配置本地 vLLM 服务，并通过 `LLM_BASE_URL`、`LLM_API_KEY` 和 `LLM_MODEL` 指向 OpenAI 兼容接口。请勿提交模型权重、私有运行配置、数据库密码或 API Key。
-
-## 秋招面试可讲点
-
-1. 为什么模型的“已完成”不能作为成功条件，以及如何基于真实页面状态做独立验证。
-2. PostgreSQL 保存任务事实、Redis 只做队列唤醒的原因，以及重启恢复的设计。
-3. 如何将风险动作从“模型能力”中剥离，交给审批策略和人工确认。
-4. 为什么必须区分 `live_model`、离线测试、严格基线和 Demo 回归，避免指标误导。
