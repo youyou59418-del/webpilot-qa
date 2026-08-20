@@ -60,8 +60,9 @@ flowchart LR
 ## 快速开始
 
 ```bash
-# 运行自动化测试
-./.venv/bin/python -m pytest -q
+# 运行自动化测试（Python 3.12）
+python --version  # 预期：Python 3.12.x
+python -m pytest -q
 
 # 启动受控网页
 ./.venv/bin/python scripts/run_shopbench.py --port 8080
@@ -72,5 +73,21 @@ flowchart LR
 # 启动控制台
 PATH="$PWD/.tools/node/bin:$PATH" ./.tools/node/bin/npm --prefix console run dev
 ```
+
+## 完整测试记录（Python 3.12）
+
+在已启动的 Python 3.12 项目环境中执行：
+
+```bash
+python -m pytest -q
+```
+
+已验证结果：
+
+```text
+109 passed, 3 skipped
+```
+
+其中 3 项跳过为环境相关项。该结果用于证明浏览器运行时、结构化观察、工具边界、验证、恢复、安全、服务和评测等工程回归通过；它不是本地模型的网页任务成功率。
 
 真实模型运行需要额外配置本地 vLLM 服务，并通过 `LLM_BASE_URL`、`LLM_API_KEY` 和 `LLM_MODEL` 指向 OpenAI 兼容接口。请勿提交模型权重、私有运行配置、数据库密码或 API Key。
